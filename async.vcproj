@@ -41,7 +41,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="..\..\BaseClasses\"
+				AdditionalIncludeDirectories="&quot;$(WINDOWS_SDK)\Samples\multimedia\directshow\BaseClasses\&quot;"
 				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;ASYNC_EXPORTS"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -64,7 +64,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				RegisterOutput="true"
-				AdditionalDependencies="..\..\BaseClasses\Debug\strmbasd.lib winmm.lib msvcrtd.lib shlwapi.lib winhttp.lib"
+				AdditionalDependencies="&quot;$(WINDOWS_SDK)\Samples\multimedia\directshow\BaseClasses\Debug\strmbasd.lib&quot; winmm.lib msvcrtd.lib shlwapi.lib winhttp.lib"
 				LinkIncremental="2"
 				IgnoreAllDefaultLibraries="true"
 				IgnoreDefaultLibraryNames=""
@@ -123,7 +123,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="2"
-				AdditionalIncludeDirectories="..\..\BaseClasses\"
+				AdditionalIncludeDirectories="&quot;$(WINDOWS_SDK)\Samples\multimedia\directshow\BaseClasses\&quot;"
 				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;ASYNC_EXPORTS"
 				RuntimeLibrary="2"
 				UsePrecompiledHeader="0"
@@ -144,7 +144,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				RegisterOutput="true"
-				AdditionalDependencies="..\..\BaseClasses\Release\strmbase.lib winmm.lib msvcrt.lib shlwapi.lib winhttp.lib"
+				AdditionalDependencies="&quot;$(WINDOWS_SDK)\Samples\multimedia\directshow\BaseClasses\Release\strmbase.lib&quot; winmm.lib msvcrt.lib shlwapi.lib winhttp.lib"
 				LinkIncremental="2"
 				IgnoreAllDefaultLibraries="true"
 				IgnoreDefaultLibraryNames=""
