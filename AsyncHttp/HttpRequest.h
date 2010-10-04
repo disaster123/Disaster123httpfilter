@@ -59,7 +59,9 @@ public:
 	~HttpRequest();
 
     HRESULT InitializeSession(HttpRequestCB *pCB);
-	HRESULT SendRequest(LPCWSTR szUrl);
+	HRESULT SendRequest(LPCWSTR szUrl, LPCWSTR szHeaders);
+
+	HRESULT End();
 
     DWORD   FileSize() const
     {

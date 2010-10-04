@@ -12,9 +12,16 @@
 
 #include <stdio.h>
 #include <streams.h>
+#include <crtdbg.h>
+#include <atlconv.h>
+
+#include <tchar.h>
+#include <cstdio>
 
 #include "..\Base\asyncio.h"
 #include "HttpStream.h"
+
+extern void Log(const char *fmt, ...);
 
 CHttpStream::~CHttpStream()
 {
@@ -80,7 +87,7 @@ HRESULT CHttpStream::CreateTempFile()
 		return HRESULT_FROM_WIN32(GetLastError());
 	}
 
-	DbgLog((LOG_TRACE, 0, TEXT("Created Tempfile %s", m_szTempFile)));
+	Log("Created Tempfile %s", m_szTempFile);
 
 	// Create the temp file and open the handle for writing. 
 	m_hFileWrite = CreateFile(
@@ -95,7 +102,7 @@ HRESULT CHttpStream::CreateTempFile()
 
 	if (m_hFileWrite == INVALID_HANDLE_VALUE) 
 	{
-		DbgLog((LOG_ERROR, 0, TEXT("Could not create temp file %s"), m_szTempFile));
+		Log("Could not create temp file %s", m_szTempFile);
 
 		m_szTempFile[0] = TEXT('\0');
 
@@ -115,7 +122,7 @@ HRESULT CHttpStream::CreateTempFile()
     
 	if (m_hFileRead == INVALID_HANDLE_VALUE) 
 	{
-		DbgLog((LOG_ERROR, 0, TEXT("Could not open temp file for reading.")));
+		Log("Could not open temp file for reading.");
 
 		m_szTempFile[0] = TEXT('\0');
 
@@ -136,10 +143,84 @@ HRESULT CHttpStream::CreateTempFile()
 //  lpszFileName: Contains the URL of the file to download.
 //***********************************************************************/
 
-HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
+HRESULT CHttpStream::ReInitialize(LPCTSTR lpszFileName, LONGLONG startbytes)
 {
+    USES_CONVERSION;
 
-    DbgLog((LOG_ERROR, 0, TEXT("(HttpStream) CHttpStream::Initialize %s\n"), lpszFileName));
+	Log("(HttpStream) CHttpStream::ReInitialize %s Start: %I64d\n", lpszFileName, startbytes);
+	Sleep(1000);
+
+	CAutoLock lock(&m_DataLock);
+
+	Log("(HttpStream) CHttpStream::ReInitialize after LOCK\n");
+	Sleep(1000);
+
+	HRESULT hr = S_OK;
+
+	hr = m_HttpRequest.End();
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+	Log("(HttpStream) CHttpStream::ReInitialize after m_HttpRequest.End call\n");
+
+	// Intialize the HTTP session.
+	hr = m_HttpRequest.InitializeSession(this);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    CloseHandle(m_hFileWrite);
+	m_hFileWrite = INVALID_HANDLE_VALUE;
+
+	CloseHandle(m_hFileRead);
+	m_hFileRead = INVALID_HANDLE_VALUE;
+
+	// Delete old temp file to store the data.
+    if (m_szTempFile[0] != TEXT('0'))
+    {
+        DeleteFile(m_szTempFile);
+    }
+
+    // Create a temp file to store the data.
+	hr = CreateTempFile();
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+	// init vars
+	m_bComplete = FALSE;
+	m_llFileLengthStartPoint = startbytes;
+	m_llFileLength = 0;
+
+	char lpszHeaders[255];
+	sprintf_s(lpszHeaders,"Range: bytes=%I64d-\r\n", startbytes);
+
+    // Start the download. The download will complete
+    // asynchronously.
+	Log("(HttpStream) m_HttpRequest.SendRequest Start\n");
+
+	hr = m_HttpRequest.SendRequest(A2W(lpszFileName), A2W(lpszHeaders));
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+	Log("(HttpStream) m_HttpRequest.SendRequest done\n");
+	Sleep(1000);
+
+	return S_OK;
+}
+
+
+HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName) 
+{
+    USES_CONVERSION;
+
+	Log("(HttpStream) CHttpStream::Initialize %s\n", lpszFileName);
 
 	if (m_hFileWrite != INVALID_HANDLE_VALUE)
 	{
@@ -149,7 +230,6 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
 	HRESULT hr = S_OK;
 
     // Create the event used to wait for the download.
-
     m_hReadWaitEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
     if (m_hReadWaitEvent == NULL)
     {
@@ -170,13 +250,27 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
         return hr;
     }
 
+	// init vars
+	m_bComplete = FALSE;
+	m_llFileLengthStartPoint = 0;
+	m_llFileLength = 0;
+
     // Start the download. The download will complete
     // asynchronously.
-    hr = m_HttpRequest.SendRequest(lpszFileName);
+    hr = m_HttpRequest.SendRequest(A2W(lpszFileName), NULL);
     if (FAILED(hr))
     {
         return hr;
     }
+
+    // we have to free this??
+	/*if (m_FileName[0] = '0') {
+   	   DbgLog((LOG_ERROR, 1, TEXT("(HttpStream) CHttpStream::Initialize delete [] m_FileName\n")));
+  	   delete [] m_FileName;
+	}*/
+
+	m_FileName = new TCHAR[strlen(lpszFileName)+1];
+	strcpy(m_FileName, lpszFileName);
 
 	return S_OK;
 }
@@ -203,11 +297,7 @@ HRESULT CHttpStream::StartRead(
     pos.HighPart = pOverlapped->OffsetHigh;
     pos.LowPart = pOverlapped->Offset;
 
-    LONGLONG llReadEnd = pos.QuadPart + dwBytesToRead;
-
-    DbgLog((LOG_TRACE, 15, TEXT("CHttpStream::StartRead @ %I64d (read %d bytes)"), 
-        pos.QuadPart, dwBytesToRead));
-
+	LONGLONG llReadEnd = pos.QuadPart + dwBytesToRead;
     LONGLONG llFileLen = 0;
 
 	BOOL bResult;
@@ -215,23 +305,30 @@ HRESULT CHttpStream::StartRead(
 		
 	*pbPending = FALSE;
 
-    DbgLog((LOG_TRACE, 15, TEXT("Data requested: %I64d, Available = %I64d"),
-        llReadEnd, m_llFileLength));
+	Log("CHttpStream::StartRead: Diff Endpos: %I64d Startpos requested: %I64d Endpos requested: %I64d, AvailableStart = %I64d, FileLength = %I64d, AvailableEnd = %I64d",
+		((m_llFileLengthStartPoint+m_llFileLength)-llReadEnd), pos.QuadPart, llReadEnd, m_llFileLengthStartPoint, m_llFileLength, (m_llFileLengthStartPoint+m_llFileLength));
 
     BOOL bWait = FALSE;
 
     m_DataLock.Lock();
-
-    if ((llReadEnd > m_llFileLength && !m_bComplete))
+    if (
+		(pos.QuadPart < m_llFileLengthStartPoint) ||
+		(llReadEnd > (m_llFileLengthStartPoint+m_llFileLength))
+		)
     {
         // The caller has requested data past the amount 
         // that has been downloaded so far. We'll need to wait.
 
+		Log("CHttpStream::StartRead: Request out of range - wanted start: %I64d end: %I64d min avail: %I64d max avail: %I64d", pos.QuadPart, llReadEnd, m_llFileLengthStartPoint, (m_llFileLengthStartPoint+m_llFileLength));
+
+        m_DataLock.Unlock();
+		ReInitialize(m_FileName, pos.QuadPart);
+		Log("CHttpStream::StartRead: Reinitiated");
+
+        m_DataLock.Lock();
         m_llBytesRequested = llReadEnd;
-
         bWait = TRUE;
-    }
-
+    } 
     m_DataLock.Unlock();
 
     if (bWait)
@@ -242,15 +339,21 @@ HRESULT CHttpStream::StartRead(
             m_pEventSink->Notify(EC_BUFFERING_DATA, TRUE, 0);
         }
 
-        // Wait for the data to be downloaded.
+		Log("CHttpStream::StartRead: Wait for m_hReadWaitEvent");
+
+		// Wait for the data to be downloaded.
         WaitForSingleObject(m_hReadWaitEvent, INFINITE);
 
-        if (m_pEventSink)
+     	Log("CHttpStream::StartRead: Wait for m_hReadWaitEvent DONE Startpos requested: %I64d Endpos requested: %I64d, AvailableStart = %I64d, AvailableEnd = %I64d",
+		pos.QuadPart, llReadEnd, m_llFileLengthStartPoint, (m_llFileLengthStartPoint+m_llFileLength));
+
+		if (m_pEventSink)
         {
             m_pEventSink->Notify(EC_BUFFERING_DATA, FALSE, 0);
         }
     }
 
+	Log("CHttpStream::StartRead: Read from Temp File");
     // Read the data from the temp file. (Async I/O request.)
     bResult = ReadFile(
         m_hFileRead, 
@@ -269,7 +372,7 @@ HRESULT CHttpStream::StartRead(
         }
         else
         {
-            DbgLog((LOG_ERROR, 0, TEXT("ReadFile failed (err = %d)"), err));
+            Log("ReadFile failed (err = %d)", err);
             // An actual error occurred.
             hr = HRESULT_FROM_WIN32(err);
         }
@@ -284,21 +387,21 @@ HRESULT CHttpStream::EndRead(
     LPDWORD pdwBytesRead
     )
 {
-    DbgLog((LOG_TRACE, 15, TEXT("CHttpStream::EndRead")));
+    Log("CHttpStream::EndRead");
 
     CAutoLock lock(&m_CritSec);
 
     BOOL bResult = 0;
-    DWORD err = 0;
 
     // Complete the async I/O request.
-
     bResult = GetOverlappedResult(m_hFileRead, pOverlapped, pdwBytesRead, TRUE);
 
     if (!bResult)
     {
-        err = GetLastError();
-        DbgLog((LOG_ERROR, 0, TEXT("File error! %d"), err));
+		DWORD err = GetLastError();
+		LPTSTR Error = 0;
+		FormatMessage( FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,                    NULL,                    err,                    0,                    (LPTSTR)&Error,                    0,                    NULL);
+        Log("File error! %s", Error);
 
         return HRESULT_FROM_WIN32(err);
     }
@@ -308,12 +411,13 @@ HRESULT CHttpStream::EndRead(
 
 HRESULT CHttpStream::Cancel()
 {
+    Log("CHttpStream::Cancel()");
     typedef BOOL (*CANCELIOEXPROC)(HANDLE hFile, LPOVERLAPPED lpOverlapped);
 
     BOOL bResult = 0;
     CANCELIOEXPROC pfnCancelIoEx = NULL;
 
-    HMODULE hKernel32 = LoadLibrary(L"Kernel32.dll"); 
+    HMODULE hKernel32 = LoadLibrary("Kernel32.dll"); 
 
     if (hKernel32)
     {
@@ -352,9 +456,12 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
     // the HTTP headers. If that doesn't work, we
     // simply block until the entire file is downloaded.
 
+    //DbgLog((LOG_TRACE, 0, TEXT("CHttpStream::Length called!")));
     if (m_bComplete)
     {
-        *pTotal = m_llFileLength;
+		// DbgLog((LOG_TRACE, 0, TEXT("CHttpStream::Length: Downloaded file is complete - so put in the real values!")));
+
+		*pTotal = m_llFileLength;
         *pAvailable = *pTotal;
         return S_OK;
     }
@@ -362,9 +469,9 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
     // The file is still downloading.
 
     DWORD cbSize = m_HttpRequest.FileSize();
-
     if (cbSize == 0)
     {
+		Log("CHttpStream::Length: This should NOT happen - we should always have a filesize through http!");
         while (!m_bComplete)
         {
             WaitForSingleObject(m_hReadWaitEvent, INFINITE);
@@ -373,15 +480,19 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
         *pTotal = m_llFileLength;
         *pAvailable = *pTotal;
         return S_OK;
-
     }
 
-    // Return the estimated size
+    // we always return the FULL size - as we allow seeking in http
+	// STEFAN 
+/*    *pTotal = cbSize;
+	*pAvailable = m_llFileLength;
 
+	return VFW_S_ESTIMATED;*/
+	
     *pTotal = cbSize;
-    *pAvailable = m_llFileLength; // This is the current length.
+    *pAvailable = *pTotal;
 
-    return VFW_S_ESTIMATED;
+    return S_OK;
 }
 
 
@@ -391,24 +502,36 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
 
 void CHttpStream::OnData(BYTE *pData, DWORD cbData) 
 {
+    Log("CHttpStream::OnData() before Lock");
     CAutoLock lock(&m_DataLock);
+    Log("CHttpStream::OnData() after Lock");
 
     BOOL bResult = 0;
     DWORD cbWritten = 0;
+
+	//DbgLog((LOG_ERROR, 0, TEXT("CHttpStream::OnData: WriteFile")));
+
+	if (m_hFileWrite == INVALID_HANDLE_VALUE) {
+		return;
+	}
 
     // Write the data to the temp file.
     bResult = WriteFile(m_hFileWrite, pData, cbData, &cbWritten, NULL);
     if (!bResult)
     {
-        DbgLog((LOG_ERROR, 0, TEXT("Cannot write file!")));
+		DWORD err = GetLastError();
+		LPTSTR Error = 0;
+		FormatMessage( FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,                    NULL,                    err,                    0,                    (LPTSTR)&Error,                    0,                    NULL);
+
+		Log("CHttpStream::OnData: Cannot write file! %s", Error);
     }
 
     m_llFileLength += cbWritten;
 
     if ((m_llBytesRequested > 0) && (m_llFileLength >= m_llBytesRequested))
     {
-        DbgLog((LOG_TRACE, 15, TEXT("Requested = %I64d, available = %I64d"), 
-            m_llBytesRequested, m_llFileLength));
+		Log("CHttpStream::OnData Tick m_hReadWaitEvent Request READY!: Requested = %I64d, available = %I64d", 
+            m_llBytesRequested, m_llFileLength);
 
         m_llBytesRequested = 0;
 
@@ -418,26 +541,26 @@ void CHttpStream::OnData(BYTE *pData, DWORD cbData)
 
 void CHttpStream::OnEndOfStream() 
 {
-    DbgLog((LOG_TRACE, 0, TEXT("End of stream")));
-    CAutoLock lock(&m_DataLock);
+	// TODO - the "old" OnEndOfStream seems to get calles here when we init a new instance
+	//CAutoLock lock(&m_DataLock);
 
-    m_bComplete = TRUE;
+    //m_bComplete = TRUE;
 
-    CloseHandle(m_hFileWrite);
+    //CloseHandle(m_hFileWrite);
+    //m_hFileWrite = INVALID_HANDLE_VALUE;
 
-    m_hFileWrite = INVALID_HANDLE_VALUE;
-
-    SetEvent(m_hReadWaitEvent);
+    //Log("CHttpStream::OnEndOfStream: Tick m_hReadWaitEvent");
+    //SetEvent(m_hReadWaitEvent);
 } 
 
 void CHttpStream::OnError(DWORD dwErr) 
 {
-    DbgLog((LOG_ERROR, 0, TEXT("Http streaming error: 0x%X"), HRESULT_FROM_WIN32(dwErr)));
+/*	Log("CHttpStream::OnError: Http streaming error: 0x%X", HRESULT_FROM_WIN32(dwErr));
 
     if (m_pEventSink)
     {
         m_pEventSink->Notify(EC_ERRORABORT, TRUE, 0);
     }
 
-    OnEndOfStream();        
+    OnEndOfStream();*/
 } 

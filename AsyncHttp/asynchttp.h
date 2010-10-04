@@ -13,6 +13,7 @@
 #include <tchar.h>
 #include <shlwapi.h>
 #include <strsafe.h>
+#include <atlconv.h>
 
 #include "HttpStream.h"
 
@@ -75,6 +76,7 @@ public:
     //  Load a (new) file
     STDMETHODIMP Load(LPCOLESTR lpwszFileName, const AM_MEDIA_TYPE *pmt)
     {
+		USES_CONVERSION;
         CheckPointer(lpwszFileName, E_POINTER);
 
         // lstrlenW is one of the few Unicode functions that works on win95
@@ -84,37 +86,47 @@ public:
 
         /*  Check the file type */
         CMediaType cmt;
+		cmt.InitMediaType();
         if (NULL == pmt) 
 		{
-            // if we don't set a type it is working fine instead of setting MEDIASUBTYPE_NULL
-			/*
 			GUID subtype = MEDIASUBTYPE_NULL;
+			GUID formattype = FORMAT_None;
 
 			// Workaround to support AVI files in this sample.
-			TCHAR *szExtension = PathFindExtension(lpwszFileName);
+			TCHAR *szExtension = PathFindExtension(OLE2T(lpwszFileName));
 
             DbgLog((LOG_TRACE, 0, TEXT("MEDIASUBTYPE")));
-			if (szExtension && _tcscmp(szExtension, TEXT(".mkv")) == 0)
-			{
-				subtype = MEDIASUBTYPE_H264;
-                DbgLog((LOG_TRACE, 0, TEXT("subtype MEDIASUBTYPE_H264")));
-			}
 			if (szExtension && _tcscmp(szExtension, TEXT(".avi")) == 0)
 			{
 				subtype = MEDIASUBTYPE_Avi;
-               DbgLog((LOG_TRACE, 0, TEXT("subtype MEDIASUBTYPE_Avi")));
+                DbgLog((LOG_TRACE, 0, TEXT("subtype MEDIASUBTYPE_Avi")));
+			} else if (szExtension && _tcscmp(szExtension, TEXT(".mkv")) == 0)
+			{
+				subtype = MEDIASUBTYPE_H264;
+                DbgLog((LOG_TRACE, 0, TEXT("subtype MEDIASUBTYPE_H264 / mkv")));
+			}
+			else {
+				DbgLog((LOG_TRACE, 0, TEXT("subtype MEDIASUBTYPE_NULL / Wildcard")));
 			}
 
-            cmt.SetSubtype(&subtype);
-			*/
-            cmt.SetType(&MEDIATYPE_Stream);
-      }
+			cmt.SetType(&MEDIATYPE_Stream);
+			// other filters also don't set more than this
+            cmt.SetSubtype(&MEDIASUBTYPE_NULL);
+			
+            /*cmt.SetSubtype(&subtype);
+			cmt.SetFormatType(&formattype);*/
+        }
         else 
 		{
-            cmt = *pmt;
+			// cmt = *pmt;
+  		    HRESULT hr = CopyMediaType(&cmt, pmt);
+   			if (FAILED(hr))
+			{
+				return hr;
+			}
         }
 
-		HRESULT hr = m_FileStream.Initialize(lpwszFileName);
+		HRESULT hr = m_FileStream.Initialize(OLE2T(lpwszFileName));
 		if (FAILED(hr))
 		{
 			return hr;
@@ -123,15 +135,22 @@ public:
         m_pFileName = new WCHAR[cch];
 
         if (m_pFileName!=NULL)
-    	    CopyMemory(m_pFileName, lpwszFileName, cch*sizeof(WCHAR));
+			CopyMemory(m_pFileName, lpwszFileName, cch*sizeof(WCHAR));
 
-        // this is not a simple assignment... pointers and format
-        // block (if any) are intelligently copied
-    	m_mt = cmt;
-
-        cmt.bTemporalCompression = TRUE;
+		// this is how MS async filter does it
+		// cmt.bFixedSizeSamples = TRUE;
+		cmt.bTemporalCompression = TRUE;
         cmt.lSampleSize = 1;
 
+		//m_mt = cmt;
+		hr = CopyMediaType(&m_mt, &cmt);
+		if (FAILED(hr))
+		{
+			FreeMediaType(cmt);
+			return hr;
+		}
+
+		FreeMediaType(cmt);
         return S_OK;
     }
 

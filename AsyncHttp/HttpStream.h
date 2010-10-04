@@ -48,6 +48,8 @@ public:
 
 	HRESULT Initialize(LPCTSTR lpszFileName);
 
+	HRESULT ReInitialize(LPCTSTR lpszFileName, LONGLONG startbytes);
+
     HRESULT SetEventSink(IMediaEventSink *pSink)
     {
         m_pEventSink = pSink; // Do not add ref;
@@ -102,8 +104,11 @@ private:
     TCHAR		m_szTempFile[MAX_PATH]; // Name of the temp file
     
     LONGLONG    m_llFileLength;         // Current length of the temp file, in bytes
+	LONGLONG	m_llFileLengthStartPoint; // Start of Current length in bytes
     BOOL        m_bComplete;            // TRUE if the download is complete.
     LONGLONG    m_llBytesRequested;     // Size of most recent read request.
+
+	TCHAR       *m_FileName;
 
     IMediaEventSink *m_pEventSink;
 };

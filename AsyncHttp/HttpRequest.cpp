@@ -36,6 +36,28 @@ HttpRequest::~HttpRequest()
     delete [] m_pBuffer;
 }
 
+HRESULT HttpRequest::End()
+{
+    if (m_hSession)
+    {
+        // Remove the status callback.
+        WinHttpSetStatusCallback(
+            m_hSession, 
+            NULL, 
+            WINHTTP_CALLBACK_FLAG_ALL_COMPLETIONS, 
+            NULL
+            );
+    }
+
+    WinHttpCloseHandle(m_hRequest);
+    WinHttpCloseHandle(m_hConnect);
+    WinHttpCloseHandle(m_hSession);
+
+    delete [] m_pBuffer;
+
+	return S_OK;
+}
+
 
 //************************************************************************
 //  InitializeSession
@@ -91,7 +113,7 @@ HRESULT HttpRequest::InitializeSession(HttpRequestCB *pCB)
 //
 //***********************************************************************/
 
-HRESULT HttpRequest::SendRequest(LPCWSTR szUrl)
+HRESULT HttpRequest::SendRequest(LPCWSTR szUrl, LPCWSTR szHeaders)
 {
 	BOOL bResult = FALSE;
     DWORD err = 0;
@@ -105,7 +127,7 @@ HRESULT HttpRequest::SendRequest(LPCWSTR szUrl)
     {
         return HRESULT_FROM_WIN32(err);
     }
-	DbgLog((LOG_ERROR, 0, TEXT("URL: %s Host: %s Path: %s Port: %d"), szUrl, szHost, szPath, szPort));
+	// DbgLog((LOG_ERROR, 0, TEXT("URL: %s Host: %s Path: %s Port: %d"), szUrl, szHost, szPath, szPort));
 
 	m_hConnect = WinHttpConnect(
 		m_hSession,
@@ -134,9 +156,12 @@ HRESULT HttpRequest::SendRequest(LPCWSTR szUrl)
 		goto done;
 	}
 
+	if (szHeaders == NULL) {
+		szHeaders = WINHTTP_NO_ADDITIONAL_HEADERS;
+	}
 	bResult = WinHttpSendRequest(
 		m_hRequest,
-		WINHTTP_NO_ADDITIONAL_HEADERS,
+		szHeaders,
 		0,
 		WINHTTP_NO_REQUEST_DATA,
 		0,
@@ -415,7 +440,7 @@ DWORD HttpRequest::GetHostAndPath(
 
     URL_COMPONENTS url = { 0 } ;
 
-    DbgLog((LOG_ERROR, 3, TEXT("Try to open URL %s"), szUrl));
+    // DbgLog((LOG_ERROR, 3, TEXT("Try to open URL %s"), szUrl));
 
     url.dwStructSize = sizeof(url);
     url.dwHostNameLength = -1;
