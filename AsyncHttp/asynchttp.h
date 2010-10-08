@@ -33,7 +33,7 @@ class CAsyncFilterHttp : public CAsyncReader, public IFileSourceFilter
 {
 public:
     CAsyncFilterHttp(LPUNKNOWN pUnk, HRESULT *phr) :
-        CAsyncReader(NAME("AsyncReaderHttp"), pUnk, CLSID_AsyncHttp, &m_FileStream, phr),
+        CAsyncReader(NAME("CSSR SPriebe HTTP Filter"), pUnk, CLSID_AsyncHttp, &m_FileStream, phr),
         m_pFileName(NULL),
         m_pbData(NULL)
     {

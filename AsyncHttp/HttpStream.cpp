@@ -42,33 +42,21 @@ LONGLONG	m_llDownloadLength = 0;
 LONGLONG	m_llFileLengthStartPoint = 0; // Start of Current length in bytes
 BOOL        m_bComplete = FALSE;            // TRUE if the download is complete.
 LONGLONG    m_llBytesRequested = 0;     // Size of most recent read request.
+float m_lldownspeed = 0.1;
 
 CHttpStream::~CHttpStream()
 {
-    //CAutoLock mLock(&m_lock);
 	m_DownloaderRunning = false;
-	/*
-	if (m_hFileWrite != INVALID_HANDLE_VALUE)
-	{
-		CloseHandle(m_hFileWrite);
-	}
 
-    if (m_hFileRead != INVALID_HANDLE_VALUE)
-    {
-        CloseHandle(m_hFileRead);
-    }
-*/
-    if (m_szTempFile[0] != TEXT('0'))
+	Log("~CHttpStream() called");
+	if (m_szTempFile[0] != TEXT('0'))
     {
         DeleteFile(m_szTempFile);
     }
-
-//    CloseHandle(m_hReadWaitEvent);
 }
 
 string GetDownloaderMsg()
 {
-  //CAutoLock mLock(&m_lock);
   if ( m_DownloaderQueue.size() == 0 )
   {
     return "";
@@ -305,12 +293,13 @@ UINT CALLBACK DownloaderThread(void* param)
 	   int bytesrec = 0;
 	   int mb_print_counter = 1;
 	   LONGLONG bytesrec_sum = 0;
-	   LONGLONG packets = 0;
+	   LONGLONG bytesrec_sum_old = 0;
+	   LONGLONG recv_calls = 0;
 	   LONGLONG start = GetSystemTimeInMS();
 	   do {
 		   bytesrec = recv(Socket, buffer, sizeof(buffer), 0);
 		   bytesrec_sum += bytesrec;
-		   packets++;
+		   recv_calls++;
 
 		   if (bytesrec > 0) {
 		       if (m_DownloaderQueue.size() > 0) {
@@ -330,18 +319,23 @@ UINT CALLBACK DownloaderThread(void* param)
 			 if ((int)(bytesrec_sum/1024/1024/5) == mb_print_counter) {
 			    mb_print_counter++;
 			    LONGLONG end = GetSystemTimeInMS();
-				int diff = (int)(end-start)/1000;
-				Log("Downloaded MB (5MB...): %.2Lf tooked time: %d Speed: %.4Lf MB/s Packets: %I64d", ((float)bytesrec_sum/1024/1024), diff, Round(((float)bytesrec_sum/1024/1024)/diff, 4), packets);
+				LONGLONG bytesdiff = bytesrec_sum-bytesrec_sum_old;
+				float timediff = (end-start)/1000;
+				m_lldownspeed = Round(((float)bytesdiff/1024/1024)/timediff, 4);
+				Log("DownloaderThread: Downloaded %.2LfMB time: %.2Lf Speed: %.4Lf MB/s Recv: %I64d", ((float)bytesrec_sum/1024/1024), timediff, m_lldownspeed, recv_calls);
+				start = GetSystemTimeInMS();
+				bytesrec_sum_old = bytesrec_sum;
 			 }
 		   }
-		   // Buffer is filled really small
-		   //Sleep(200);
+
 	   } while (bytesrec > 0 && m_DownloaderRunning);
+
 	   Log("DownloaderThread: Download complete - startpos: %I64d downloaded: %I64d Bytes Header Bytes: %I64d", startpos, bytesrec_sum, m_llDownloadLength);
-	   if ((startpos == 0) && (bytesrec_sum == m_llDownloadLength || m_llDownloadLength == 0)) {
+	   if ((startpos == 0) && (bytesrec_sum == m_llDownloadLength || m_llDownloadLength == 0) && !m_DownloaderRunning) {
 		   Log("DownloaderThread: Download completely completed - BREAK!");
 		   m_bComplete = true;
 		   firstline.empty();
+   	       closesocket(Socket); 
  		   break;
 	   }
 
@@ -588,11 +582,10 @@ HRESULT CHttpStream::StartRead(
 	DWORD err;
 		
 	*pbPending = FALSE;
-
-	Log("CHttpStream::StartRead: Diff Endpos: %I64d Startpos requested: %I64d Endpos requested: %I64d, AvailableStart = %I64d, FileLength = %I64d, AvailableEnd = %I64d",
-		((m_llFileLengthStartPoint+m_llFileLength)-llReadEnd), pos.QuadPart, llReadEnd, m_llFileLengthStartPoint, m_llFileLength, (m_llFileLengthStartPoint+m_llFileLength));
-
     BOOL bWait = FALSE;
+
+//	Log("CHttpStream::StartRead: Diff Endpos: %I64d Startpos requested: %I64d Endpos requested: %I64d, AvailableStart = %I64d, FileLength = %I64d, AvailableEnd = %I64d",
+//		((m_llFileLengthStartPoint+m_llFileLength)-llReadEnd), pos.QuadPart, llReadEnd, m_llFileLengthStartPoint, m_llFileLength, (m_llFileLengthStartPoint+m_llFileLength));
 
     if (
 		(pos.QuadPart < m_llFileLengthStartPoint) ||
@@ -603,18 +596,16 @@ HRESULT CHttpStream::StartRead(
         // that has been downloaded so far. We'll need to wait.
 
 		Log("CHttpStream::StartRead: Request out of range - wanted start: %I64d end: %I64d min avail: %I64d max avail: %I64d", pos.QuadPart, llReadEnd, m_llFileLengthStartPoint, (m_llFileLengthStartPoint+m_llFileLength));
-
 		// check if we'll reach the barrier within a few seconds
 		if ((pos.QuadPart > m_llFileLengthStartPoint) || (llReadEnd > (m_llFileLengthStartPoint+m_llFileLength))) {
-			if ((pos.QuadPart > (m_llFileLengthStartPoint+(1*1024*1024*5))) || (llReadEnd > (m_llFileLengthStartPoint+m_llFileLength+(1*1024*1024*5)))) {
-				// Todo this should be dynamic due to the actual down speed
-		       Log("CHttpStream::StartRead: will not reach limits within 5 seconds");
-	     	   ReInitialize(m_FileName, pos.QuadPart);
+			if ((pos.QuadPart > (m_llFileLengthStartPoint+(m_lldownspeed*1024*1024*5))) || (llReadEnd > (m_llFileLengthStartPoint+m_llFileLength+(m_lldownspeed*1024*1024*5)))) {
+				Log("CHttpStream::StartRead: will not reach pos. within 5 seconds - speed: %.4Lf MB/s ", m_lldownspeed);
+                ReInitialize(m_FileName, pos.QuadPart);
 			}
+			// out of range BUT will reach Limit in 5 sek.
 		} else {
-          Log("CHttpStream::StartRead: Startread is smaller than beginning");
+		  // out of range BUT not in line so can't reach it
 		  ReInitialize(m_FileName, pos.QuadPart);
-		  Log("CHttpStream::StartRead: Reinitiated");
 		}
 
         m_llBytesRequested = llReadEnd;
@@ -642,11 +633,10 @@ HRESULT CHttpStream::StartRead(
         }
     }
 
-	Log("CHttpStream::StartRead: Read from Temp File %d %d %d", dwBytesToRead, pOverlapped->Offset, pOverlapped->OffsetHigh);
-	//m_lock.Lock();
+	// Log("CHttpStream::StartRead: Read from Temp File %d %d %d", dwBytesToRead, pOverlapped->Offset, pOverlapped->OffsetHigh);
     // Read the data from the temp file. (Async I/O request.)
 	pOverlapped->Offset = pOverlapped->Offset - m_llFileLengthStartPoint;
-	Log("CHttpStream::StartRead: Read from Temp File %d %d %d", dwBytesToRead, pOverlapped->Offset, pOverlapped->OffsetHigh);
+	// Log("CHttpStream::StartRead: Read from Temp File %d %d %d", dwBytesToRead, pOverlapped->Offset, pOverlapped->OffsetHigh);
 	bResult = ReadFile(
         m_hFileRead, 
         pbBuffer, 
@@ -663,7 +653,7 @@ HRESULT CHttpStream::StartRead(
         err = GetLastError();
         if (err == ERROR_IO_PENDING)
         {
-			Log("ReadFile got IO_PENDING: %d - IO: %d", err, ERROR_IO_PENDING);
+			//Log("ReadFile got IO_PENDING: %d - IO: %d", err, ERROR_IO_PENDING);
             *pbPending = TRUE;
         }
         else
@@ -683,8 +673,7 @@ HRESULT CHttpStream::EndRead(
     LPDWORD pdwBytesRead
     )
 {
-    //CAutoLock mLock(&m_lock);
-    Log("CHttpStream::EndRead called - cancel IO");
+    // Log("CHttpStream::EndRead called - cancel IO");
 
     BOOL bResult = 0;
 
