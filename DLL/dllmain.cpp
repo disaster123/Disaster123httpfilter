@@ -24,7 +24,7 @@
 
 using namespace std;
 
-const WCHAR *szAsyncHttp = L"Spriebe Filter (Http)";
+const WCHAR *szAsyncHttp = L"CSSR SPriebe Http Filter";
 
 //
 // Setup data for filter registration
@@ -50,7 +50,7 @@ const AMOVIESETUP_PIN sudOpPin =
 
 const AMOVIESETUP_FILTER sudAsyncHttp =
 { 
-    &CLSID_AsyncHttpSample,         // clsID
+    &CLSID_AsyncHttp,         // clsID
     szAsyncHttp,                    // strName
 	MERIT_NORMAL,                 // dwMerit
     1,                              // nPins
@@ -65,7 +65,7 @@ CFactoryTemplate g_Templates[] =
 {
     {
         szAsyncHttp,
-        &CLSID_AsyncHttpSample,
+        &CLSID_AsyncHttp,
         CAsyncFilterHttp::CreateInstance,
         NULL,
         &sudAsyncHttp
@@ -143,6 +143,7 @@ UINT CALLBACK LogThread(void* param)
 void StartLogger()
 {
   UINT id;
+  LogRotate();
   m_hLogger = (HANDLE)_beginthreadex(NULL, 0, LogThread, 0, 0, &id);
   SetThreadPriority(m_hLogger, THREAD_PRIORITY_BELOW_NORMAL);
 }

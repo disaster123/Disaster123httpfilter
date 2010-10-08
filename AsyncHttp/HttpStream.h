@@ -14,6 +14,12 @@
 
 #include "HttpRequest.h"
 
+#include <atlbase.h>
+#include <shlobj.h>
+#include <queue>
+
+using namespace std;
+
 //************************************************************************
 //  CHttpStream
 //  Implements the CAsyncStream interface for HTTP progressive download.
@@ -28,17 +34,11 @@
 //***********************************************************************/
 
 
-class CHttpStream : public CAsyncStream, public HttpRequestCB
+class CHttpStream : public CAsyncStream //, public HttpRequestCB
 {
 public:
 
 	CHttpStream() : 
-      m_hReadWaitEvent(NULL),
-      m_hFileWrite(INVALID_HANDLE_VALUE),
-      m_hFileRead(INVALID_HANDLE_VALUE),
-      m_llFileLength(0),
-      m_llBytesRequested(0),
-      m_bComplete(FALSE),
       m_pEventSink(NULL)
 	{
 		m_szTempFile[0] = TEXT('0');
@@ -77,8 +77,8 @@ public:
     HRESULT Length(LONGLONG *pTotal, LONGLONG *pAvailable);
 	DWORD Alignment() { return 1; }
 
-    void Lock() { m_CritSec.Lock(); }
-    void Unlock() { m_CritSec.Unlock(); }
+	void Lock() {  } //m_DataLock.Lock(); }
+	void Unlock() {  } //m_DataLock.Unlock(); }
 
 	// Implementation of HttpRequestCB.
     // (Callback defined by the HttpRequest helper class.)
@@ -87,27 +87,17 @@ public:
     void OnEndOfStream();
 	void OnError(DWORD dwErr); 
 
+	HRESULT CHttpStream::Downloader_Start(TCHAR* szUrl, LONGLONG startpoint);
+
 private:
 	HRESULT CreateTempFile();
 
 private:
-    CCritSec    m_CritSec;
-    CCritSec    m_DataLock;
 
-    HANDLE      m_hReadWaitEvent;
-
-    HANDLE		m_hFileWrite;   // File handle for writing to the temp file.
-	HANDLE		m_hFileRead;    // File handle for reading from the temp file.
-
-	HttpRequest m_HttpRequest;  // HTTP request helper
+//	HttpRequest m_HttpRequest;  // HTTP request helper
 	    
     TCHAR		m_szTempFile[MAX_PATH]; // Name of the temp file
     
-    LONGLONG    m_llFileLength;         // Current length of the temp file, in bytes
-	LONGLONG	m_llFileLengthStartPoint; // Start of Current length in bytes
-    BOOL        m_bComplete;            // TRUE if the download is complete.
-    LONGLONG    m_llBytesRequested;     // Size of most recent read request.
-
 	TCHAR       *m_FileName;
 
     IMediaEventSink *m_pEventSink;

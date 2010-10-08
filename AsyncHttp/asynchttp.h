@@ -18,7 +18,7 @@
 #include "HttpStream.h"
 
 // {78057D0C-82E1-4de7-946D-D92201228C89}
-DEFINE_GUID(CLSID_AsyncHttpSample, 
+DEFINE_GUID(CLSID_AsyncHttp, 
 0x78057d0c, 0x82e1, 0x4de7, 0x94, 0x6d, 0xd9, 0x22, 0x1, 0x22, 0x8c, 0x89);
 
 
@@ -33,7 +33,7 @@ class CAsyncFilterHttp : public CAsyncReader, public IFileSourceFilter
 {
 public:
     CAsyncFilterHttp(LPUNKNOWN pUnk, HRESULT *phr) :
-        CAsyncReader(NAME("AsyncReaderHttp"), pUnk, CLSID_AsyncHttpSample, &m_FileStream, phr),
+        CAsyncReader(NAME("AsyncReaderHttp"), pUnk, CLSID_AsyncHttp, &m_FileStream, phr),
         m_pFileName(NULL),
         m_pbData(NULL)
     {
@@ -138,8 +138,8 @@ public:
 			CopyMemory(m_pFileName, lpwszFileName, cch*sizeof(WCHAR));
 
 		// this is how MS async filter does it
-		// cmt.bFixedSizeSamples = TRUE;
-		cmt.bTemporalCompression = TRUE;
+		cmt.bFixedSizeSamples = TRUE;
+		cmt.bTemporalCompression = FALSE;
         cmt.lSampleSize = 1;
 
 		//m_mt = cmt;
