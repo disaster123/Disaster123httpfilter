@@ -134,7 +134,7 @@
 				Optimization="0"
 				AdditionalIncludeDirectories="&quot;$(DSHOW_BASE)&quot;;&quot;$(WINDOWS_SDK)Include\&quot;;&quot;$(WINDOWS_SDK)\Samples\multimedia\directshow\BaseClasses\&quot;"
 				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;ASYNC_EXPORTS"
-				BasicRuntimeChecks="3"
+				BasicRuntimeChecks="0"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
 				EnableEnhancedInstructionSet="0"
@@ -142,7 +142,7 @@
 				WarningLevel="3"
 				Detect64BitPortabilityProblems="false"
 				DebugInformationFormat="0"
-				CallingConvention="2"
+				CallingConvention="0"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -156,9 +156,9 @@
 			<Tool
 				Name="VCLinkerTool"
 				RegisterOutput="false"
-				AdditionalDependencies="strmbase.lib Winmm.lib msvcrtd.lib shlwapi.lib winhttp.lib ws2_32.lib"
+				AdditionalDependencies="strmbase.lib Winmm.lib ws2_32.lib"
 				ShowProgress="2"
-				LinkIncremental="2"
+				LinkIncremental="1"
 				AdditionalLibraryDirectories="&quot;$(DSHOW_BASE)Release_MBCS&quot;; &quot;$(DXSDK_DIR)lib\x86&quot;;&quot;$(WINDOWS_SDK)\lib&quot;"
 				IgnoreAllDefaultLibraries="false"
 				IgnoreDefaultLibraryNames="libcmt.lib"
@@ -176,6 +176,7 @@
 			/>
 			<Tool
 				Name="VCManifestTool"
+				EmbedManifest="true"
 			/>
 			<Tool
 				Name="VCXDCMakeTool"
@@ -223,10 +224,6 @@
 				>
 			</File>
 			<File
-				RelativePath=".\AsyncHttp\HttpRequest.cpp"
-				>
-			</File>
-			<File
 				RelativePath=".\AsyncHttp\HttpStream.cpp"
 				>
 			</File>
@@ -246,10 +243,6 @@
 			</File>
 			<File
 				RelativePath=".\Base\asyncrdr.h"
-				>
-			</File>
-			<File
-				RelativePath=".\AsyncHttp\HttpRequest.h"
 				>
 			</File>
 			<File

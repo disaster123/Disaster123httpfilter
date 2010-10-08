@@ -18,6 +18,7 @@
 #include "HttpStream.h"
 
 // {78057D0C-82E1-4de7-946D-D92201228C89}
+// {A713A1D8-BA12-4bb8-A05A-C3931C685E82}
 DEFINE_GUID(CLSID_AsyncHttp, 
 0x78057d0c, 0x82e1, 0x4de7, 0x94, 0x6d, 0xd9, 0x22, 0x1, 0x22, 0x8c, 0x89);
 

@@ -12,8 +12,6 @@
 
 #pragma once
 
-#include "HttpRequest.h"
-
 #include <atlbase.h>
 #include <shlobj.h>
 #include <queue>
