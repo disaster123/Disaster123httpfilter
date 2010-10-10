@@ -75,13 +75,9 @@ public:
     HRESULT Length(LONGLONG *pTotal, LONGLONG *pAvailable);
 	DWORD Alignment() { return 1; }
 
-	void Lock() {  } //m_DataLock.Lock(); }
-	void Unlock() {  } //m_DataLock.Unlock(); }
+	void Lock();
+	void Unlock();
 
-	// Implementation of HttpRequestCB.
-    // (Callback defined by the HttpRequest helper class.)
-
-	void OnData(BYTE *pData, DWORD cbData);
     void OnEndOfStream();
 	void OnError(DWORD dwErr); 
 

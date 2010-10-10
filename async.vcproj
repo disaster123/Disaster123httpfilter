@@ -220,6 +220,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\AsyncHttp\AutoLockDebug.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\DLL\dllmain.cpp"
 				>
 			</File>
@@ -243,6 +247,10 @@
 			</File>
 			<File
 				RelativePath=".\Base\asyncrdr.h"
+				>
+			</File>
+			<File
+				RelativePath=".\AsyncHttp\AutoLockDebug.h"
 				>
 			</File>
 			<File

@@ -27,10 +27,15 @@
 
 #include "..\Base\asyncio.h"
 #include "HttpStream.h"
+#include "AutoLockDebug.h"
 
 extern void Log(const char *fmt, ...);
+extern void StopLogger();
 
 static CCritSec m_lock;
+static CCritSec g_lock;
+static CCritSec m_readlock;
+
 std::queue<std::string> m_DownloaderQueue;
 BOOL m_DownloaderRunning = FALSE;
 HANDLE m_hDownloader = NULL;
@@ -42,20 +47,36 @@ LONGLONG	m_llDownloadLength = 0;
 LONGLONG	m_llFileLengthStartPoint = 0; // Start of Current length in bytes
 BOOL        m_bComplete = FALSE;            // TRUE if the download is complete.
 LONGLONG    m_llBytesRequested = 0;     // Size of most recent read request.
-float m_lldownspeed = 0.1;
+float m_lldownspeed = 1.0;
 
 CHttpStream::~CHttpStream()
 {
+	Log("~CHttpStream() called");
+
 	m_DownloaderRunning = false;
 
 	// give the thread the time to finish
-	Sleep(500);
+	Sleep(200);
 
-	Log("~CHttpStream() called");
+	if (m_hFileWrite != INVALID_HANDLE_VALUE)
+	{
+		CloseHandle(m_hFileWrite);
+	}
+
+    if (m_hFileRead != INVALID_HANDLE_VALUE)
+    {
+        CloseHandle(m_hFileRead);
+    }
+
+
 	if (m_szTempFile[0] != TEXT('0'))
     {
         DeleteFile(m_szTempFile);
     }
+
+    StopLogger();
+
+	CloseHandle(m_hReadWaitEvent);
 }
 
 string GetDownloaderMsg()
@@ -133,6 +154,7 @@ void DownloaderThread_SendAll(int socket, const char* const buf, const int size)
 
 DWORD DownloaderThread_WriteData(char *buffer, int buffersize)
 {
+	//CAutoLockDebug WriteData(&m_lock, __LINE__, __FILE__,__FUNCTION__);
     BOOL bResult = 0;
     DWORD cbWritten = 0;
 
@@ -190,7 +212,7 @@ double Round(double Zahl, int Stellen)
 
 UINT CALLBACK DownloaderThread(void* param)
 {
-  Log("DownloaderThread started");
+  //Log("DownloaderThread started");
   WSADATA w;
   string firstline;
   firstline.empty();
@@ -212,8 +234,9 @@ UINT CALLBACK DownloaderThread(void* param)
 	   }
 	   char url[500];
 	   LONGLONG startpos = -1;
+	   m_llDownloadLength = 0;
 
-	   Log("DownloaderThread: Got String: %s", line.c_str());
+	   //Log("DownloaderThread: Got String: %s", line.c_str());
 	   sscanf(line.c_str(), "%s || %I64d", url, &startpos);
 	   if (firstline.length() == 0) {
 	      firstline += line.c_str();
@@ -266,7 +289,7 @@ UINT CALLBACK DownloaderThread(void* param)
 
 	   char request[2000];
 	   sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%I64d-\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
-	   Log("Sending Request: %s", request);
+	   //Log("Sending Request: %s", request);
 
 	   try {
 	      DownloaderThread_SendAll(Socket, request, sizeof(request));
@@ -277,12 +300,18 @@ UINT CALLBACK DownloaderThread(void* param)
 
        // Read Header and ignore
 	   string HeaderLine;
-	   for (int loop; loop < 20; loop++) {
+	   LONGLONG tmp1,tmp2,contlength,contrange;
+	   contlength=0;
+       contrange=0;
+	   for (int loop = 0; loop < 20; loop++) {
 		   try {
      	       DownloaderThread_GetLine(Socket, HeaderLine);
 			   //Log("DownloaderThread: Headerline: %s", HeaderLine.c_str());
-			   sscanf(HeaderLine.c_str(), "Content-Length: %I64d", &m_llDownloadLength);
+			   // Content-Range: bytes 1555775744-1555808025/1555808026
+			   sscanf(HeaderLine.c_str(), "Content-Length: %I64d", &contlength);
+			   sscanf(HeaderLine.c_str(), "Content-Range: bytes %I64d-%I64d/%I64d", &tmp1, &tmp2, &contrange);
 			   if (strcmp(HeaderLine.c_str(), "\r\n") == 0) {
+				   m_llDownloadLength = (contrange > contlength) ? contrange : contlength;
 				   break;
 			   }
 		   } catch(...) {
@@ -333,7 +362,7 @@ UINT CALLBACK DownloaderThread(void* param)
 			     LONGLONG end = GetSystemTimeInMS();
 			 	 LONGLONG bytesdiff = bytesrec_sum-bytesrec_sum_old;
 		 		 float timediff = (end-start)/1000;
-	 			 m_lldownspeed = Round(((float)bytesdiff/1024/1024)/timediff, 4);
+	 			 m_lldownspeed = (float)Round(((float)bytesdiff/1024/1024)/timediff, 4);
 				 Log("DownloaderThread: Downloaded %.2LfMB time: %.2Lf Speed: %.4Lf MB/s Recv: %I64d Last requested: %I64d", ((float)bytesrec_sum/1024/1024), timediff, m_lldownspeed, recv_calls, m_llBytesRequested);
 				 start = GetSystemTimeInMS();
 				 bytesrec_sum_old = bytesrec_sum;
@@ -397,7 +426,7 @@ HRESULT CHttpStream::Downloader_Start(TCHAR* szUrl, LONGLONG startpoint)
 
 HRESULT CHttpStream::CreateTempFile()
 {
-    //CAutoLock mLock(&m_lock);
+    //CAutoLockDebug mLock(&m_lock, __LINE__, __FILE__,__FUNCTION__);
 
 	TCHAR *szTempPath = NULL;
 	DWORD cch = 0;
@@ -493,7 +522,7 @@ HRESULT CHttpStream::CreateTempFile()
 HRESULT CHttpStream::ReInitialize(LPCTSTR lpszFileName, LONGLONG startbytes)
 {
     USES_CONVERSION;
-    //CAutoLock mLock(&m_lock);
+    //CAutoLockDebug mLock(&m_lock, __LINE__, __FILE__,__FUNCTION__);
 
     CloseHandle(m_hFileWrite);
 	m_hFileWrite = INVALID_HANDLE_VALUE;
@@ -532,11 +561,23 @@ HRESULT CHttpStream::ReInitialize(LPCTSTR lpszFileName, LONGLONG startbytes)
 HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName) 
 {
     USES_CONVERSION;
-    //CAutoLock mLock(&m_lock);
+    // CAutoLockDebug mLock(&m_lock, __LINE__, __FILE__,__FUNCTION__);
 
 	Log("(HttpStream) CHttpStream::Initialize %s", lpszFileName);
 
 	HRESULT hr = S_OK;
+
+	m_DownloaderRunning = FALSE;
+    m_hDownloader = NULL;
+    m_hReadWaitEvent = INVALID_HANDLE_VALUE;
+    m_hFileWrite = INVALID_HANDLE_VALUE;   // File handle for writing to the temp file.
+    m_hFileRead = INVALID_HANDLE_VALUE;    // File handle for reading from the temp file.
+    m_llFileLength = 0;         // Current length of the temp file, in bytes
+    m_llDownloadLength = 0;
+    m_llFileLengthStartPoint = 0; // Start of Current length in bytes
+    m_bComplete = FALSE;            // TRUE if the download is complete.
+    m_llBytesRequested = 0;     // Size of most recent read request.
+    m_lldownspeed = 1.0;
 
     // Create the event used to wait for the download.
     m_hReadWaitEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
@@ -591,7 +632,6 @@ HRESULT CHttpStream::StartRead(
     pos.LowPart = pOverlapped->Offset;
 
 	LONGLONG llReadEnd = pos.QuadPart + dwBytesToRead;
-    LONGLONG llFileLen = 0;
 
 	BOOL bResult;
 	DWORD err;
@@ -616,8 +656,15 @@ HRESULT CHttpStream::StartRead(
 			if ((pos.QuadPart > (m_llFileLengthStartPoint+(m_lldownspeed*1024*1024*5))) || (llReadEnd > (m_llFileLengthStartPoint+m_llFileLength+(m_lldownspeed*1024*1024*5)))) {
 				Log("CHttpStream::StartRead: will not reach pos. within 5 seconds - speed: %.4Lf MB/s ", m_lldownspeed);
                 ReInitialize(m_FileName, pos.QuadPart);
+			} else {
+			   // out of range BUT will reach Limit in 5 sek.
+			        if (m_pEventSink)
+					{
+						m_pEventSink->Notify(EC_BUFFERING_DATA, TRUE, 0);
+					}
+					Log("CHttpStream::StartRead: Buffer for 2 sek.");
+					Sleep(2000);
 			}
-			// out of range BUT will reach Limit in 5 sek.
 		} else {
 		  // out of range BUT not in line so can't reach it
 		  ReInitialize(m_FileName, pos.QuadPart);
@@ -648,10 +695,11 @@ HRESULT CHttpStream::StartRead(
         }
     }
 
-	//Log("CHttpStream::StartRead: Read from Temp File %d %d %d", dwBytesToRead, pOverlapped->Offset, pOverlapped->OffsetHigh);
+	//Log("CHttpStream::StartRead: Read from Temp File BytesToRead: %u Startpos: %u", dwBytesToRead, pOverlapped->Offset);
     // Read the data from the temp file. (Async I/O request.)
 	pOverlapped->Offset = pOverlapped->Offset - m_llFileLengthStartPoint;
 	//Log("CHttpStream::StartRead: Read from Temp File %d %d %d", dwBytesToRead, pOverlapped->Offset, pOverlapped->OffsetHigh);
+	//m_lock.Lock();
 	bResult = ReadFile(
         m_hFileRead, 
         pbBuffer, 
@@ -659,7 +707,6 @@ HRESULT CHttpStream::StartRead(
         pdwBytesRead,
         pOverlapped
         );
-
 	//m_lock.Unlock();
 	//Log("CHttpStream::StartRead: Readed from Temp File");
 
@@ -681,7 +728,15 @@ HRESULT CHttpStream::StartRead(
 	return hr;
 }
 
+void CHttpStream::Lock() {
+	//Log("CHttpStream::Lock(): called");
+	g_lock.Lock();
+}
 
+void CHttpStream::Unlock() {
+	//Log("CHttpStream::Unlock(): called");
+	g_lock.Unlock();
+}
 
 HRESULT CHttpStream::EndRead(
     LPOVERLAPPED pOverlapped, 

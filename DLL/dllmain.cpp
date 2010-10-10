@@ -134,9 +134,10 @@ UINT CALLBACK LogThread(void* param)
         fclose(fp);
       }
     }
-    Sleep(1000);
+    Sleep(500);
   }
-  return 0;
+
+  ExitThread(0);
 }
 
 
