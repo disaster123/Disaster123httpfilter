@@ -1,8 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 10.00
 # Visual Studio 2008
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{3A131AF1-5B57-49A1-9ACD-E9C4DA44E988}"
-EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Async", "Async.vcproj", "{76FC45D6-69EF-41D6-91A4-BD3DAFAC67EB}"
 EndProject
 Global

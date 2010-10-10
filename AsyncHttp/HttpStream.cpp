@@ -48,6 +48,9 @@ CHttpStream::~CHttpStream()
 {
 	m_DownloaderRunning = false;
 
+	// give the thread the time to finish
+	Sleep(500);
+
 	Log("~CHttpStream() called");
 	if (m_szTempFile[0] != TEXT('0'))
     {
@@ -227,7 +230,7 @@ UINT CALLBACK DownloaderThread(void* param)
 		   Log("DownloaderThread: GetHostAndPath Error", HRESULT_FROM_WIN32(err));
        }
 
-	   Log("DownloaderThread: Detected URL: %s Port %d Path %s", szHost, szPort, szPath);
+	   //Log("DownloaderThread: Detected URL: %s Port %d Path %s", szHost, szPort, szPath);
 
 	   int Socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	   if (Socket == -1) {
@@ -260,11 +263,10 @@ UINT CALLBACK DownloaderThread(void* param)
           Log("DownloaderThread: Connect fehlgeschlagen!");
 		  ExitThread(1);
        }
-       Log("DownloaderThread: Connect erfolgreich!");
 
 	   char request[2000];
-	   sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%d-\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
-	   //Log("Sending Request: %s", request);
+	   sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%I64d-\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
+	   Log("Sending Request: %s", request);
 
 	   try {
 	      DownloaderThread_SendAll(Socket, request, sizeof(request));
@@ -290,7 +292,7 @@ UINT CALLBACK DownloaderThread(void* param)
 	   Log("DownloaderThread: Headers complete Downloadsize: %I64d", m_llDownloadLength);
 
 	   char buffer[1024*256];
-	   int bytesrec = 0;
+	   LONGLONG bytesrec = 0;
 	   int mb_print_counter = 1;
 	   LONGLONG bytesrec_sum = 0;
 	   LONGLONG bytesrec_sum_old = 0;
@@ -298,45 +300,58 @@ UINT CALLBACK DownloaderThread(void* param)
 	   LONGLONG start = GetSystemTimeInMS();
 	   do {
 		   bytesrec = recv(Socket, buffer, sizeof(buffer), 0);
-		   bytesrec_sum += bytesrec;
 		   recv_calls++;
 
 		   if (bytesrec > 0) {
+     		   bytesrec_sum += bytesrec;
+
+			   // If we move this under DownloadThread so that we don't need the next if again it doesn't work... no idea why
 		       if (m_DownloaderQueue.size() > 0) {
 			     LONGLONG end = GetSystemTimeInMS();
   			     int diff = (int)(end-start)/1000;
 				 Log("DownloadThread: Downloaded MB (found new queue request): %.2Lf tooked time: %d Speed: %.4Lf MB/s", ((float)bytesrec_sum/1024/1024), diff, Round(((float)bytesrec_sum/1024/1024)/diff, 4));
 			     Log("DownloadThread: found new queue request - so cancel");
-			     break;
+
+		         if ((m_llBytesRequested > 0) && ((m_llFileLength+m_llFileLengthStartPoint) >= m_llBytesRequested)) {
+				    Log("DownloadThread: Tick m_hReadWaitEvent Request READY!: Requested until Pos = %I64d, max. Available = %I64d", m_llBytesRequested, m_llFileLength+m_llFileLengthStartPoint);
+			        m_llBytesRequested = 0;
+				    SetEvent(m_hReadWaitEvent);
+ 			     }
+
+				 break;
 		       }
+
 		       DownloaderThread_WriteData(buffer, bytesrec);
+
 		       if ((m_llBytesRequested > 0) && ((m_llFileLength+m_llFileLengthStartPoint) >= m_llBytesRequested)) {
 				    Log("DownloadThread: Tick m_hReadWaitEvent Request READY!: Requested until Pos = %I64d, max. Available = %I64d", m_llBytesRequested, m_llFileLength+m_llFileLengthStartPoint);
 			        m_llBytesRequested = 0;
 				    SetEvent(m_hReadWaitEvent);
 			   }
-
-			 if ((int)(bytesrec_sum/1024/1024/5) == mb_print_counter) {
-			    mb_print_counter++;
-			    LONGLONG end = GetSystemTimeInMS();
-				LONGLONG bytesdiff = bytesrec_sum-bytesrec_sum_old;
-				float timediff = (end-start)/1000;
-				m_lldownspeed = Round(((float)bytesdiff/1024/1024)/timediff, 4);
-				Log("DownloaderThread: Downloaded %.2LfMB time: %.2Lf Speed: %.4Lf MB/s Recv: %I64d", ((float)bytesrec_sum/1024/1024), timediff, m_lldownspeed, recv_calls);
-				start = GetSystemTimeInMS();
-				bytesrec_sum_old = bytesrec_sum;
-			 }
+  			   if ((int)(bytesrec_sum/1024/1024/5) == mb_print_counter) {
+			     mb_print_counter++;
+			     LONGLONG end = GetSystemTimeInMS();
+			 	 LONGLONG bytesdiff = bytesrec_sum-bytesrec_sum_old;
+		 		 float timediff = (end-start)/1000;
+	 			 m_lldownspeed = Round(((float)bytesdiff/1024/1024)/timediff, 4);
+				 Log("DownloaderThread: Downloaded %.2LfMB time: %.2Lf Speed: %.4Lf MB/s Recv: %I64d Last requested: %I64d", ((float)bytesrec_sum/1024/1024), timediff, m_lldownspeed, recv_calls, m_llBytesRequested);
+				 start = GetSystemTimeInMS();
+				 bytesrec_sum_old = bytesrec_sum;
+			   }
+		   } else  {
+			   Log("DownloaderThread: 0 or - bytes received - bytesrec: %I64d", bytesrec);
 		   }
 
 	   } while (bytesrec > 0 && m_DownloaderRunning);
 
-	   Log("DownloaderThread: Download complete - startpos: %I64d downloaded: %I64d Bytes Header Bytes: %I64d", startpos, bytesrec_sum, m_llDownloadLength);
+	   Log("DownloaderThread: Download compl./canceled - startpos: %I64d downloaded: %I64d Bytes Header Bytes: %I64d - bytesrec: %I64d - m_DownloaderRunning: %s", startpos, bytesrec_sum, m_llDownloadLength, bytesrec, (m_DownloaderRunning)?"true":"false");
+
 	   if ((startpos == 0) && (bytesrec_sum == m_llDownloadLength || m_llDownloadLength == 0) && !m_DownloaderRunning) {
 		   Log("DownloaderThread: Download completely completed - BREAK!");
 		   m_bComplete = true;
 		   firstline.empty();
    	       closesocket(Socket); 
- 		   break;
+		   break;
 	   }
 
 	   // Verbindung beenden
@@ -608,13 +623,11 @@ HRESULT CHttpStream::StartRead(
 		  ReInitialize(m_FileName, pos.QuadPart);
 		}
 
-        m_llBytesRequested = llReadEnd;
         bWait = TRUE;
     } 
 
     if (bWait)
     {
-		Log("CHttpStream::StartRead: Wait for m_hReadWaitEvent");
         // Notify the application that the filter is buffering data.
         if (m_pEventSink)
         {
@@ -622,6 +635,8 @@ HRESULT CHttpStream::StartRead(
         }
 
 		// Wait for the data to be downloaded.
+        m_llBytesRequested = llReadEnd;
+		Log("CHttpStream::StartRead: Wait for m_hReadWaitEvent - wait for size/pos: %I64d", m_llBytesRequested);
         WaitForSingleObject(m_hReadWaitEvent, INFINITE);
 
      	Log("CHttpStream::StartRead: Wait for m_hReadWaitEvent DONE Startpos requested: %I64d Endpos requested: %I64d, AvailableStart = %I64d, AvailableEnd = %I64d",
@@ -633,10 +648,10 @@ HRESULT CHttpStream::StartRead(
         }
     }
 
-	// Log("CHttpStream::StartRead: Read from Temp File %d %d %d", dwBytesToRead, pOverlapped->Offset, pOverlapped->OffsetHigh);
+	//Log("CHttpStream::StartRead: Read from Temp File %d %d %d", dwBytesToRead, pOverlapped->Offset, pOverlapped->OffsetHigh);
     // Read the data from the temp file. (Async I/O request.)
 	pOverlapped->Offset = pOverlapped->Offset - m_llFileLengthStartPoint;
-	// Log("CHttpStream::StartRead: Read from Temp File %d %d %d", dwBytesToRead, pOverlapped->Offset, pOverlapped->OffsetHigh);
+	//Log("CHttpStream::StartRead: Read from Temp File %d %d %d", dwBytesToRead, pOverlapped->Offset, pOverlapped->OffsetHigh);
 	bResult = ReadFile(
         m_hFileRead, 
         pbBuffer, 
@@ -673,7 +688,7 @@ HRESULT CHttpStream::EndRead(
     LPDWORD pdwBytesRead
     )
 {
-    // Log("CHttpStream::EndRead called - cancel IO");
+    //Log("CHttpStream::EndRead called - cancel IO");
 
     BOOL bResult = 0;
 
@@ -738,30 +753,26 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
     // the HTTP headers. If that doesn't work, we
     // simply block until the entire file is downloaded.
 
-	m_lock.Lock();
     if (m_bComplete)
     {
 		*pTotal = m_llFileLength;
         *pAvailable = *pTotal;
-     	m_lock.Unlock();
-        return S_OK;
+
+		return S_OK;
     }
     
     // The file is still downloading.
-	m_lock.Lock();
     LONGLONG cbSize = m_llDownloadLength;
     if (cbSize == 0)
     {
 		Log("CHttpStream::Length: is 0 wait until a few bytes are here!");
 		m_llBytesRequested = 5;
-    	m_lock.Unlock();
         WaitForSingleObject(m_hReadWaitEvent, INFINITE);
 
         *pTotal = m_llFileLength;
         *pAvailable = *pTotal;
         return S_OK;
     }
-   	m_lock.Unlock();
 
     *pTotal = cbSize;
     *pAvailable = *pTotal;
