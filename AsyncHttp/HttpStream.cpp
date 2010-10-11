@@ -338,12 +338,11 @@ UINT CALLBACK DownloaderThread(void* param)
 		       if (m_DownloaderQueue.size() > 0) {
 			     LONGLONG end = GetSystemTimeInMS();
   			     int diff = (int)(end-start)/1000;
-				 Log("DownloadThread: Downloaded MB (found new queue request): %.2Lf tooked time: %d Speed: %.4Lf MB/s", ((float)bytesrec_sum/1024/1024), diff, Round(((float)bytesrec_sum/1024/1024)/diff, 4));
-			     Log("DownloadThread: found new queue request - so cancel");
+				 Log("DownloaderThread: Downloaded MB (found new queue request): %.2Lf tooked time: %d Speed: %.4Lf MB/s", ((float)bytesrec_sum/1024/1024), diff, Round(((float)bytesrec_sum/1024/1024)/diff, 4));
+			     Log("DownloaderThread: found new queue request - so cancel");
 
 		         if ((m_llBytesRequested > 0) && ((m_llFileLength+m_llFileLengthStartPoint) >= m_llBytesRequested)) {
-				    Log("DownloadThread: Tick m_hReadWaitEvent Request READY!: Requested until Pos = %I64d, max. Available = %I64d", m_llBytesRequested, m_llFileLength+m_llFileLengthStartPoint);
-			        m_llBytesRequested = 0;
+				    Log("DownloaderThread: Tick m_hReadWaitEvent Request READY!: Requested until Pos = %I64d, max. Available = %I64d", m_llBytesRequested, m_llFileLength+m_llFileLengthStartPoint);
 				    SetEvent(m_hReadWaitEvent);
  			     }
 
@@ -354,7 +353,6 @@ UINT CALLBACK DownloaderThread(void* param)
 
 		       if ((m_llBytesRequested > 0) && ((m_llFileLength+m_llFileLengthStartPoint) >= m_llBytesRequested)) {
 				    Log("DownloadThread: Tick m_hReadWaitEvent Request READY!: Requested until Pos = %I64d, max. Available = %I64d", m_llBytesRequested, m_llFileLength+m_llFileLengthStartPoint);
-			        m_llBytesRequested = 0;
 				    SetEvent(m_hReadWaitEvent);
 			   }
   			   if ((int)(bytesrec_sum/1024/1024/5) == mb_print_counter) {
@@ -685,6 +683,7 @@ HRESULT CHttpStream::StartRead(
         m_llBytesRequested = llReadEnd;
 		Log("CHttpStream::StartRead: Wait for m_hReadWaitEvent - wait for size/pos: %I64d", m_llBytesRequested);
         WaitForSingleObject(m_hReadWaitEvent, INFINITE);
+		m_llBytesRequested = 0;
 
      	Log("CHttpStream::StartRead: Wait for m_hReadWaitEvent DONE Startpos requested: %I64d Endpos requested: %I64d, AvailableStart = %I64d, AvailableEnd = %I64d",
 		pos.QuadPart, llReadEnd, m_llFileLengthStartPoint, (m_llFileLengthStartPoint+m_llFileLength));
@@ -823,6 +822,7 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
 		Log("CHttpStream::Length: is 0 wait until a few bytes are here!");
 		m_llBytesRequested = 5;
         WaitForSingleObject(m_hReadWaitEvent, INFINITE);
+		m_llBytesRequested = 0;
 
         *pTotal = m_llFileLength;
         *pAvailable = *pTotal;
