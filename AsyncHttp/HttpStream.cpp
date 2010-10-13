@@ -656,12 +656,6 @@ HRESULT CHttpStream::StartRead(
                 ReInitialize(m_FileName, pos.QuadPart);
 			} else {
 			   // out of range BUT will reach Limit in 5 sek.
-			        if (m_pEventSink)
-					{
-						m_pEventSink->Notify(EC_BUFFERING_DATA, TRUE, 0);
-					}
-					Log("CHttpStream::StartRead: Buffer for 2 sek.");
-					Sleep(2000);
 			}
 		} else {
 		  // out of range BUT not in line so can't reach it
