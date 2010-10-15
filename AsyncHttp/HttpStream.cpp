@@ -56,7 +56,9 @@ CHttpStream::~CHttpStream()
 	m_DownloaderRunning = false;
 
 	// give the thread the time to finish
-	Sleep(200);
+	Sleep(500);
+
+	CloseHandle(m_hReadWaitEvent);
 
 	if (m_hFileWrite != INVALID_HANDLE_VALUE)
 	{
@@ -68,15 +70,12 @@ CHttpStream::~CHttpStream()
         CloseHandle(m_hFileRead);
     }
 
-
 	if (m_szTempFile[0] != TEXT('0'))
     {
         DeleteFile(m_szTempFile);
     }
 
     StopLogger();
-
-	CloseHandle(m_hReadWaitEvent);
 }
 
 string GetDownloaderMsg()
@@ -673,8 +672,16 @@ HRESULT CHttpStream::StartRead(
             m_pEventSink->Notify(EC_BUFFERING_DATA, TRUE, 0);
         }
 
-		// Wait for the data to be downloaded.
-        m_llBytesRequested = llReadEnd;
+		// TODO check for .mkv file ext. - we need at least 65536 bytes to make the filter happy
+		if (pos.QuadPart == 0) {
+ 		   // Wait for the data to be downloaded.
+           m_llBytesRequested = max(llReadEnd, 65536+10);
+		   Log("CHttpStream::StartRead: extended readend from %I64d to %I64d", llReadEnd, (LONGLONG)(65536+10));
+		} else {
+ 		   // Wait for the data to be downloaded.
+           m_llBytesRequested = llReadEnd;
+		}
+
 		Log("CHttpStream::StartRead: Wait for m_hReadWaitEvent - wait for size/pos: %I64d", m_llBytesRequested);
         WaitForSingleObject(m_hReadWaitEvent, INFINITE);
 		m_llBytesRequested = 0;
@@ -736,9 +743,7 @@ HRESULT CHttpStream::EndRead(
     LPDWORD pdwBytesRead
     )
 {
-    //Log("CHttpStream::EndRead called - cancel IO");
-
-    BOOL bResult = 0;
+	BOOL bResult = 0;
 
     // Complete the async I/O request.
     bResult = GetOverlappedResult(m_hFileRead, pOverlapped, pdwBytesRead, TRUE);
@@ -789,19 +794,7 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
     ASSERT(pTotal != NULL);
     ASSERT(pAvailable != NULL);
 
-    // pAvailable can be NULL in IAsyncReader::Length,
-    // but not in this method.
-
-    // NOTE: While the file is still downloading, if
-    // we return a smaller size, it may confuse the
-    // downstream filter. (e.g., the AVI Splitter)
-
-    // Therefore, if the file is not complete yet,
-    // we try to get the size that was returned in
-    // the HTTP headers. If that doesn't work, we
-    // simply block until the entire file is downloaded.
-
-    if (m_bComplete)
+	if (m_bComplete)
     {
 		*pTotal = m_llFileLength;
         *pAvailable = *pTotal;
@@ -828,4 +821,3 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
 
     return S_OK;
 }
-
