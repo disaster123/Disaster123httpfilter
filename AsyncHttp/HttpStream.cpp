@@ -34,6 +34,7 @@ extern void StopLogger();
 
 static CCritSec m_datalock;
 static CCritSec m_CritSec;
+static CCritSec g_CritSec;
 
 std::queue<std::string> m_DownloaderQueue;
 BOOL m_DownloaderRunning = FALSE;
@@ -739,12 +740,14 @@ HRESULT CHttpStream::StartRead(
 
 void CHttpStream::Lock() {
 //	Log("CHttpStream::Lock() g_lock: called");
-	m_CritSec.Lock();
+	// The MS Sample Filter uses here also the m_CritSec but when we do this with MP we have a deadlock
+	g_CritSec.Lock();
 }
 
 void CHttpStream::Unlock() {
 //	Log("CHttpStream::Unlock() g_lock: called");
-	m_CritSec.Unlock();
+	// The MS Sample Filter uses here also the m_CritSec but when we do this with MP we have a deadlock
+	g_CritSec.Unlock();
 }
 
 HRESULT CHttpStream::EndRead(
