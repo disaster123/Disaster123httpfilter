@@ -22,7 +22,7 @@
 CUnknown * WINAPI CAsyncFilterHttp::CreateInstance(LPUNKNOWN pUnk, HRESULT *phr)
 {
     ASSERT(phr);
-    DbgLog((LOG_ERROR, 0, TEXT("(asynchttp) CAsyncFilterHttp::CreateInstance\n")));
+    Log("(asynchttp) CAsyncFilterHttp::CreateInstance");
 
     //  DLLEntry does the right thing with the return code and
     //  the returned value on failure

@@ -32,9 +32,8 @@
 extern void Log(const char *fmt, ...);
 extern void StopLogger();
 
-static CCritSec m_lock;
-static CCritSec g_lock;
-static CCritSec m_readlock;
+static CCritSec m_datalock;
+static CCritSec m_CritSec;
 
 std::queue<std::string> m_DownloaderQueue;
 BOOL m_DownloaderRunning = FALSE;
@@ -153,6 +152,7 @@ void DownloaderThread_SendAll(int socket, const char* const buf, const int size)
 
 DWORD DownloaderThread_WriteData(char *buffer, int buffersize)
 {
+    CAutoLock lock(&m_datalock);
 	//CAutoLockDebug WriteData(&m_lock, __LINE__, __FILE__,__FUNCTION__);
     BOOL bResult = 0;
     DWORD cbWritten = 0;
@@ -223,6 +223,7 @@ UINT CALLBACK DownloaderThread(void* param)
   while ( m_DownloaderRunning && !m_bComplete ) {
 	if ( m_DownloaderQueue.size() > 0 || ((firstline.length() > 0) && (m_DownloaderQueue.size() == 0)) ) {
        string line;
+	   m_datalock.Lock();
 	   if ((firstline.length() > 0) && (m_DownloaderQueue.size() == 0)) {
 			line = firstline.c_str();
 		   	m_bComplete = FALSE;
@@ -310,7 +311,7 @@ UINT CALLBACK DownloaderThread(void* param)
 			   sscanf(HeaderLine.c_str(), "Content-Length: %I64d", &contlength);
 			   sscanf(HeaderLine.c_str(), "Content-Range: bytes %I64d-%I64d/%I64d", &tmp1, &tmp2, &contrange);
 			   if (strcmp(HeaderLine.c_str(), "\r\n") == 0) {
-				   m_llDownloadLength = (contrange > contlength) ? contrange : contlength;
+				   m_llDownloadLength = max(contrange, contlength);
 				   break;
 			   }
 		   } catch(...) {
@@ -318,6 +319,7 @@ UINT CALLBACK DownloaderThread(void* param)
 		   }
 	   }
 	   Log("DownloaderThread: Headers complete Downloadsize: %I64d", m_llDownloadLength);
+	   m_datalock.Unlock();
 
 	   char buffer[1024*256];
 	   LONGLONG bytesrec = 0;
@@ -364,8 +366,8 @@ UINT CALLBACK DownloaderThread(void* param)
 				 start = GetSystemTimeInMS();
 				 bytesrec_sum_old = bytesrec_sum;
 			   }
-		   } else  {
-			   Log("DownloaderThread: 0 or - bytes received - bytesrec: %I64d", bytesrec);
+		   } else {
+			   Log("DownloaderThread: 0 or negative bytes received - bytesrec: %I64d", bytesrec);
 		   }
 
 	   } while (bytesrec > 0 && m_DownloaderRunning);
@@ -621,7 +623,9 @@ HRESULT CHttpStream::StartRead(
 	LPDWORD pdwBytesRead
 	)
 {
-    HRESULT hr = S_OK;
+    CAutoLock lock(&m_CritSec);
+
+	HRESULT hr = S_OK;
 
     LARGE_INTEGER pos;
 
@@ -636,8 +640,10 @@ HRESULT CHttpStream::StartRead(
 	*pbPending = FALSE;
     BOOL bWait = FALSE;
 
-//	Log("CHttpStream::StartRead: Diff Endpos: %I64d Startpos requested: %I64d Endpos requested: %I64d, AvailableStart = %I64d, FileLength = %I64d, AvailableEnd = %I64d",
-//		((m_llFileLengthStartPoint+m_llFileLength)-llReadEnd), pos.QuadPart, llReadEnd, m_llFileLengthStartPoint, m_llFileLength, (m_llFileLengthStartPoint+m_llFileLength));
+	m_datalock.Lock();
+
+   Log("CHttpStream::StartRead: Startpos requested: %I64d Endpos requested: %I64d, AvailableStart = %I64d, AvailableEnd = %I64d, Diff Endpos: %I64d",
+ 		pos.QuadPart, llReadEnd, m_llFileLengthStartPoint, (m_llFileLengthStartPoint+m_llFileLength), ((m_llFileLengthStartPoint+m_llFileLength)-llReadEnd));
 
     if (
 		(pos.QuadPart < m_llFileLengthStartPoint) ||
@@ -652,17 +658,22 @@ HRESULT CHttpStream::StartRead(
 		if ((pos.QuadPart > m_llFileLengthStartPoint) || (llReadEnd > (m_llFileLengthStartPoint+m_llFileLength))) {
 			if ((pos.QuadPart > (m_llFileLengthStartPoint+(m_lldownspeed*1024*1024*5))) || (llReadEnd > (m_llFileLengthStartPoint+m_llFileLength+(m_lldownspeed*1024*1024*5)))) {
 				Log("CHttpStream::StartRead: will not reach pos. within 5 seconds - speed: %.4Lf MB/s ", m_lldownspeed);
+			    m_datalock.Unlock();
                 ReInitialize(m_FileName, pos.QuadPart);
 			} else {
+         		m_datalock.Unlock();
 			   // out of range BUT will reach Limit in 5 sek.
 			}
 		} else {
+		  m_datalock.Unlock();
 		  // out of range BUT not in line so can't reach it
 		  ReInitialize(m_FileName, pos.QuadPart);
 		}
 
         bWait = TRUE;
-    } 
+	} else {
+		m_datalock.Unlock();
+	}
 
     if (bWait)
     {
@@ -675,8 +686,8 @@ HRESULT CHttpStream::StartRead(
 		// TODO check for .mkv file ext. - we need at least 65536 bytes to make the filter happy
 		if (pos.QuadPart == 0) {
  		   // Wait for the data to be downloaded.
-           m_llBytesRequested = max(llReadEnd, 65536+10);
-		   Log("CHttpStream::StartRead: extended readend from %I64d to %I64d", llReadEnd, (LONGLONG)(65536+10));
+           m_llBytesRequested = max(llReadEnd, 65536);
+		   Log("CHttpStream::StartRead: extended readend from %I64d to %I64d", llReadEnd, m_llBytesRequested);
 		} else {
  		   // Wait for the data to be downloaded.
            m_llBytesRequested = llReadEnd;
@@ -698,8 +709,7 @@ HRESULT CHttpStream::StartRead(
 	//Log("CHttpStream::StartRead: Read from Temp File BytesToRead: %u Startpos: %u", dwBytesToRead, pOverlapped->Offset);
     // Read the data from the temp file. (Async I/O request.)
 	pOverlapped->Offset = pOverlapped->Offset - m_llFileLengthStartPoint;
-	//Log("CHttpStream::StartRead: Read from Temp File %d %d %d", dwBytesToRead, pOverlapped->Offset, pOverlapped->OffsetHigh);
-	//m_lock.Lock();
+	// Log("CHttpStream::StartRead: Read from Temp File %d %d %d", dwBytesToRead, pOverlapped->Offset, pOverlapped->OffsetHigh);
 	bResult = ReadFile(
         m_hFileRead, 
         pbBuffer, 
@@ -707,7 +717,6 @@ HRESULT CHttpStream::StartRead(
         pdwBytesRead,
         pOverlapped
         );
-	//m_lock.Unlock();
 	//Log("CHttpStream::StartRead: Readed from Temp File");
 
     if (bResult == 0)
@@ -729,13 +738,13 @@ HRESULT CHttpStream::StartRead(
 }
 
 void CHttpStream::Lock() {
-	//Log("CHttpStream::Lock(): called");
-	g_lock.Lock();
+//	Log("CHttpStream::Lock() g_lock: called");
+	m_CritSec.Lock();
 }
 
 void CHttpStream::Unlock() {
-	//Log("CHttpStream::Unlock(): called");
-	g_lock.Unlock();
+//	Log("CHttpStream::Unlock() g_lock: called");
+	m_CritSec.Unlock();
 }
 
 HRESULT CHttpStream::EndRead(
@@ -743,7 +752,11 @@ HRESULT CHttpStream::EndRead(
     LPDWORD pdwBytesRead
     )
 {
+	CAutoLock lock(&m_CritSec);
+
 	BOOL bResult = 0;
+
+	Log("CHttpStream::EndRead: Read from Temp File Startpos: %u OFFHIGH: %u", pOverlapped->Offset, pOverlapped->OffsetHigh);
 
     // Complete the async I/O request.
     bResult = GetOverlappedResult(m_hFileRead, pOverlapped, pdwBytesRead, TRUE);
@@ -791,6 +804,7 @@ HRESULT CHttpStream::Cancel()
 
 HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
 {
+    CAutoLock lock(&m_datalock);
     ASSERT(pTotal != NULL);
     ASSERT(pAvailable != NULL);
 
@@ -807,9 +821,19 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
     if (cbSize == 0)
     {
 		Log("CHttpStream::Length: is 0 wait until a few bytes are here!");
+        if (m_pEventSink)
+        {
+            m_pEventSink->Notify(EC_BUFFERING_DATA, TRUE, 0);
+        }
+
 		m_llBytesRequested = 5;
         WaitForSingleObject(m_hReadWaitEvent, INFINITE);
 		m_llBytesRequested = 0;
+
+		if (m_pEventSink)
+        {
+            m_pEventSink->Notify(EC_BUFFERING_DATA, FALSE, 0);
+        }
 
         *pTotal = m_llFileLength;
         *pAvailable = *pTotal;

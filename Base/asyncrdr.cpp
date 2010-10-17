@@ -13,6 +13,8 @@
 #include "asyncio.h"
 #include "asyncrdr.h"
 
+extern void Log(const char *fmt, ...);
+
 // --- CAsyncOutputPin implementation ---
 
 CAsyncOutputPin::CAsyncOutputPin(
@@ -250,7 +252,7 @@ STDMETHODIMP
 CAsyncOutputPin::SyncReadAligned(
                   IMediaSample* pSample)
 {
-    CheckPointer(pSample,E_POINTER);
+	CheckPointer(pSample,E_POINTER);
 
     REFERENCE_TIME tStart, tStop;
     HRESULT hr = pSample->GetTime(&tStart, &tStop);
@@ -293,6 +295,7 @@ CAsyncOutputPin::SyncReadAligned(
         return hr;
     }
 
+	Log("CAsyncOutputPin::SyncReadAligned Pos: %I64d lLength: %d", llPos, lLength);
     LONG cbActual;
     hr = m_pIo->SyncReadAligned(llPos,
                                 lLength,
@@ -341,7 +344,7 @@ CAsyncOutputPin::SyncRead(
     LONG lLength,       // nr bytes required
     BYTE* pBuffer)      // write data here
 {
-    DbgLog((LOG_TRACE, 15, TEXT("CAsyncOutputPin::SyncRead")));
+	Log("CAsyncOutputPin::SyncRead Pos: %I64d lLength: %d", llPosition, lLength);
     return m_pIo->SyncRead(llPosition, lLength, pBuffer);
 }
 

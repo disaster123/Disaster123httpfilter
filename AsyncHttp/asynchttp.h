@@ -17,6 +17,8 @@
 
 #include "HttpStream.h"
 
+extern void Log(const char *fmt, ...);
+
 // {78057D0C-82E1-4de7-946D-D92201228C89}
 // {A713A1D8-BA12-4bb8-A05A-C3931C685E82}
 DEFINE_GUID(CLSID_AsyncHttp, 
@@ -96,18 +98,17 @@ public:
 			// Workaround to support AVI files in this sample.
 			TCHAR *szExtension = PathFindExtension(OLE2T(lpwszFileName));
 
-            DbgLog((LOG_TRACE, 0, TEXT("MEDIASUBTYPE")));
 			if (szExtension && _tcscmp(szExtension, TEXT(".avi")) == 0)
 			{
 				subtype = MEDIASUBTYPE_Avi;
-                DbgLog((LOG_TRACE, 0, TEXT("subtype MEDIASUBTYPE_Avi")));
+                Log("subtype MEDIASUBTYPE_Avi");
 			} else if (szExtension && _tcscmp(szExtension, TEXT(".mkv")) == 0)
 			{
 				subtype = MEDIASUBTYPE_H264;
-                DbgLog((LOG_TRACE, 0, TEXT("subtype MEDIASUBTYPE_H264 / mkv")));
+                Log("subtype MEDIASUBTYPE_H264 / mkv");
 			}
 			else {
-				DbgLog((LOG_TRACE, 0, TEXT("subtype MEDIASUBTYPE_NULL / Wildcard")));
+				Log("subtype MEDIASUBTYPE_NULL / Wildcard");
 			}
 
 			cmt.SetType(&MEDIATYPE_Stream);

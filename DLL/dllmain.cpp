@@ -237,7 +237,7 @@ HRESULT __fastcall UnicodeToAnsi(LPCOLESTR pszW, LPSTR* ppszA)
 
 STDAPI DllRegisterServer()
 {
-    DbgLog((LOG_ERROR, 0, TEXT("CAsyncFilterHttp::CreateInstance...")));
+    Log("CAsyncFilterHttp::CreateInstance...");
 
     return AMovieDllRegisterServer2(TRUE);
 }
