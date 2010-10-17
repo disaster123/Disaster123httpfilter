@@ -25,6 +25,7 @@
 using namespace std;
 
 const WCHAR *szAsyncHttp = L"CSSR SPriebe Http Filter";
+const char *VERSION = "0.10";
 
 //
 // Setup data for filter registration
@@ -78,7 +79,6 @@ int g_cTemplates = sizeof(g_Templates) / sizeof(g_Templates[0]);
 
 void LogPath(char* dest, char* name)
 {
-  TCHAR folder[MAX_PATH];
   sprintf(dest,"C:\\Temp\\async.%s",name);
 }
 
@@ -228,6 +228,10 @@ HRESULT __fastcall UnicodeToAnsi(LPCOLESTR pszW, LPSTR* ppszA)
   return NOERROR;
 }
 
+const char *getVersion() {
+   return VERSION;
+}
+
 ////////////////////////////////////////////////////////////////////////
 //
 // Exported entry points for registration and unregistration 
@@ -237,7 +241,7 @@ HRESULT __fastcall UnicodeToAnsi(LPCOLESTR pszW, LPSTR* ppszA)
 
 STDAPI DllRegisterServer()
 {
-    Log("CAsyncFilterHttp::CreateInstance...");
+	Log("CAsyncFilterHttp::CreateInstance... VERSION: %s", VERSION);
 
     return AMovieDllRegisterServer2(TRUE);
 }

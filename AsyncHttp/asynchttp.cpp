@@ -17,12 +17,13 @@
 
 #include "asynchttp.h"
 
+extern const char *getVersion();
 
 //* Create a new instance of this class
 CUnknown * WINAPI CAsyncFilterHttp::CreateInstance(LPUNKNOWN pUnk, HRESULT *phr)
 {
     ASSERT(phr);
-    Log("(asynchttp) CAsyncFilterHttp::CreateInstance");
+	Log("(asynchttp) CAsyncFilterHttp::CreateInstance Version: %s", getVersion());
 
     //  DLLEntry does the right thing with the return code and
     //  the returned value on failure

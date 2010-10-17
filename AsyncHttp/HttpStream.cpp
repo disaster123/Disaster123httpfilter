@@ -645,6 +645,14 @@ HRESULT CHttpStream::StartRead(
 
    Log("CHttpStream::StartRead: Startpos requested: %I64d Endpos requested: %I64d, AvailableStart = %I64d, AvailableEnd = %I64d, Diff Endpos: %I64d",
  		pos.QuadPart, llReadEnd, m_llFileLengthStartPoint, (m_llFileLengthStartPoint+m_llFileLength), ((m_llFileLengthStartPoint+m_llFileLength)-llReadEnd));
+   if ((m_llFileLength > 0) && (pos.QuadPart > m_llFileLength)) {
+	   // FIXME: this should not happen
+	   // propably a buffer overflow
+	   Log("CHttpStream::StartRead: requested startpos out of max. range - return end of file");
+	   m_datalock.Unlock();
+	   // return HRESULT_FROM_WIN32(38);
+	   return S_FALSE;
+   }
 
     if (
 		(pos.QuadPart < m_llFileLengthStartPoint) ||
@@ -707,10 +715,16 @@ HRESULT CHttpStream::StartRead(
         }
     }
 
-	//Log("CHttpStream::StartRead: Read from Temp File BytesToRead: %u Startpos: %u", dwBytesToRead, pOverlapped->Offset);
+	//Log("CHttpStream::StartRead: Read from Temp File BytesToRead: %u Startpos: %I64d", dwBytesToRead, pos.QuadPart);
     // Read the data from the temp file. (Async I/O request.)
-	pOverlapped->Offset = pOverlapped->Offset - m_llFileLengthStartPoint;
-	// Log("CHttpStream::StartRead: Read from Temp File %d %d %d", dwBytesToRead, pOverlapped->Offset, pOverlapped->OffsetHigh);
+	// recaluate new start pos
+    LARGE_INTEGER new_pos;
+    new_pos.LowPart = pOverlapped->Offset;
+    new_pos.HighPart = pOverlapped->OffsetHigh;
+	new_pos.QuadPart = new_pos.QuadPart - m_llFileLengthStartPoint;
+	pOverlapped->Offset = new_pos.LowPart;
+	pOverlapped->OffsetHigh = new_pos.HighPart;
+	// Log("CHttpStream::StartRead: Read from Temp File %u %I64d", dwBytesToRead, pos.QuadPart);
 	bResult = ReadFile(
         m_hFileRead, 
         pbBuffer, 
@@ -757,9 +771,12 @@ HRESULT CHttpStream::EndRead(
 {
 	CAutoLock lock(&m_CritSec);
 
-	BOOL bResult = 0;
+    LARGE_INTEGER pos;
+	pos.LowPart = pOverlapped->Offset;
+	pos.HighPart = pOverlapped->OffsetHigh;
 
-	Log("CHttpStream::EndRead: Read from Temp File Startpos: %u OFFHIGH: %u", pOverlapped->Offset, pOverlapped->OffsetHigh);
+	BOOL bResult = 0;
+	Log("CHttpStream::EndRead: Read from Temp File Startpos: %I64d (Real: %I64d)", pos.QuadPart, m_llFileLengthStartPoint);
 
     // Complete the async I/O request.
     bResult = GetOverlappedResult(m_hFileRead, pOverlapped, pdwBytesRead, TRUE);
