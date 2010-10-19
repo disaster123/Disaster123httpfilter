@@ -349,9 +349,6 @@ CAsyncOutputPin::SyncRead(
 }
 
 
-// return the length of the file, and the length currently
-// available locally. We only support locally accessible files,
-// so they are always the same
 STDMETHODIMP
 CAsyncOutputPin::Length(
     LONGLONG* pTotal,

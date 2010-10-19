@@ -39,14 +39,13 @@ public:
 	CHttpStream() : 
       m_pEventSink(NULL)
 	{
-		m_szTempFile[0] = TEXT('0');
 	}
 
 	~CHttpStream();
 
 	HRESULT Initialize(LPCTSTR lpszFileName);
-
-	HRESULT ReInitialize(LPCTSTR lpszFileName, LONGLONG startbytes);
+    HRESULT add_to_downloadqueue(LONGLONG startpos);
+    void WaitForSize(LONGLONG start, LONGLONG end);
 
     HRESULT SetEventSink(IMediaEventSink *pSink)
     {
@@ -88,10 +87,6 @@ private:
 
 private:
 
-//	HttpRequest m_HttpRequest;  // HTTP request helper
-	    
-    TCHAR		m_szTempFile[MAX_PATH]; // Name of the temp file
-    
 	TCHAR       *m_FileName;
 
     IMediaEventSink *m_pEventSink;

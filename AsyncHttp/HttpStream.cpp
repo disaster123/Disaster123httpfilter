@@ -37,28 +37,25 @@ static CCritSec m_CritSec;
 static CCritSec g_CritSec;
 
 std::queue<std::string> m_DownloaderQueue;
-BOOL m_DownloaderRunning = FALSE;
-HANDLE m_hDownloader = NULL;
-HANDLE      m_hReadWaitEvent = INVALID_HANDLE_VALUE;
+TCHAR		m_szTempFile[MAX_PATH]; // Name of the temp file
+BOOL        m_DownloaderShouldRun = FALSE;
+HANDLE      m_hDownloader = NULL;
 HANDLE		m_hFileWrite = INVALID_HANDLE_VALUE;   // File handle for writing to the temp file.
 HANDLE		m_hFileRead = INVALID_HANDLE_VALUE;    // File handle for reading from the temp file.
 LONGLONG    m_llFileLength = 0;         // Current length of the temp file, in bytes
 LONGLONG	m_llDownloadLength = 0;
 LONGLONG	m_llFileLengthStartPoint = 0; // Start of Current length in bytes
-BOOL        m_bComplete = FALSE;            // TRUE if the download is complete.
 LONGLONG    m_llBytesRequested = 0;     // Size of most recent read request.
-float m_lldownspeed = 1.0;
+float m_lldownspeed;
 
 CHttpStream::~CHttpStream()
 {
 	Log("~CHttpStream() called");
 
-	m_DownloaderRunning = false;
+	m_DownloaderShouldRun = false;
 
 	// give the thread the time to finish
 	Sleep(500);
-
-	CloseHandle(m_hReadWaitEvent);
 
 	if (m_hFileWrite != INVALID_HANDLE_VALUE)
 	{
@@ -75,7 +72,33 @@ CHttpStream::~CHttpStream()
         DeleteFile(m_szTempFile);
     }
 
+    if (m_hDownloader != INVALID_HANDLE_VALUE)
+    {
+       CloseHandle(m_hDownloader);
+    }
+
     StopLogger();
+}
+
+double Round(double Zahl, int Stellen)
+{
+    double v[] = { 1, 10, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8 };  // mgl. verlängern
+    return floor(Zahl * v[Stellen] + 0.5) / v[Stellen];
+}
+
+ULONGLONG GetSystemTimeInMS() {
+  SYSTEMTIME systemTime;
+  GetSystemTime(&systemTime);
+
+  FILETIME fileTime;
+  SystemTimeToFileTime(&systemTime, &fileTime);
+
+  ULARGE_INTEGER uli;
+  uli.LowPart = fileTime.dwLowDateTime; // could use memcpy here!
+  uli.HighPart = fileTime.dwHighDateTime;
+
+  ULONGLONG systemTimeIn_ms(uli.QuadPart/10000);
+  return systemTimeIn_ms;
 }
 
 string GetDownloaderMsg()
@@ -137,6 +160,105 @@ std::runtime_error CreateSocketError()
     } 
   return std::runtime_error(msg);
 }
+HRESULT DownloaderThread_CreateTempFile()
+{
+	TCHAR *szTempPath = NULL;
+	DWORD cch = 0;
+	
+	// Query for the size of the temp path.
+	cch = GetTempPath(0, NULL);
+	if (cch == 0)
+	{
+		return HRESULT_FROM_WIN32(GetLastError());
+	}
+
+	// Allocate a buffer for the name.
+	szTempPath = new TCHAR[cch];
+	if (szTempPath == NULL)
+	{
+		return E_OUTOFMEMORY;
+	}
+
+	// Get the temp path.
+	cch = GetTempPath(cch, szTempPath);
+	if (cch == 0)
+	{
+		delete [] szTempPath;
+		return HRESULT_FROM_WIN32(GetLastError());
+	}
+
+	// Get the temp file name.
+	UINT uval = GetTempFileName(szTempPath, TEXT("ASYNCDOWNLOADER"), 0, m_szTempFile);
+
+	delete [] szTempPath;
+
+	if (uval == 0)
+	{
+      return HRESULT_FROM_WIN32(GetLastError());
+	}
+
+    if (m_hFileWrite != INVALID_HANDLE_VALUE) {
+      CloseHandle(m_hFileWrite);
+    }
+    if (m_hFileRead != INVALID_HANDLE_VALUE) {
+	  CloseHandle(m_hFileRead);
+    }
+
+	// Delete old temp file to store the data.
+    if (m_szTempFile[0] != TEXT('0'))
+    {
+        DeleteFile(m_szTempFile);
+    }
+
+	// Create the temp file and open the handle for writing. 
+	m_hFileWrite = CreateFile(
+		m_szTempFile,
+		GENERIC_WRITE,
+		FILE_SHARE_READ,
+		NULL,
+		CREATE_ALWAYS,
+		0,
+		NULL
+		);
+
+	if (m_hFileWrite == INVALID_HANDLE_VALUE) 
+	{
+		Log("Could not create temp file %s", m_szTempFile);
+
+		m_szTempFile[0] = TEXT('\0');
+
+		return HRESULT_FROM_WIN32(GetLastError());
+	}
+
+    Log("Created Tempfile %s", m_szTempFile);
+
+    // Open a read handle for the same temp file.
+    m_hFileRead = CreateFile(
+        m_szTempFile,
+        GENERIC_READ,
+        FILE_SHARE_WRITE | FILE_SHARE_READ,
+        NULL,
+        OPEN_EXISTING,
+        FILE_FLAG_OVERLAPPED,
+        NULL
+        );
+    
+	if (m_hFileRead == INVALID_HANDLE_VALUE) 
+	{
+		Log("Could not open temp file for reading.");
+
+		m_szTempFile[0] = TEXT('\0');
+
+        CloseHandle(m_hFileWrite);
+        m_hFileWrite = INVALID_HANDLE_VALUE;
+
+		return HRESULT_FROM_WIN32(GetLastError());
+	}
+
+	return S_OK;
+}
+
+
 void DownloaderThread_SendAll(int socket, const char* const buf, const int size)
 {
     int bytesSent = 0; // Anzahl Bytes die wir bereits vom Buffer gesendet haben
@@ -155,6 +277,7 @@ DWORD DownloaderThread_WriteData(char *buffer, int buffersize)
 {
     CAutoLock lock(&m_datalock);
 	//CAutoLockDebug WriteData(&m_lock, __LINE__, __FILE__,__FUNCTION__);
+
     BOOL bResult = 0;
     DWORD cbWritten = 0;
 
@@ -189,65 +312,46 @@ void DownloaderThread_GetLine(int socket, string& line) {
     throw CreateSocketError(); 
 }
 
-ULONGLONG GetSystemTimeInMS() {
-  SYSTEMTIME systemTime;
-  GetSystemTime(&systemTime);
-
-  FILETIME fileTime;
-  SystemTimeToFileTime(&systemTime, &fileTime);
-
-  ULARGE_INTEGER uli;
-  uli.LowPart = fileTime.dwLowDateTime; // could use memcpy here!
-  uli.HighPart = fileTime.dwHighDateTime;
-
-  ULONGLONG systemTimeIn_ms(uli.QuadPart/10000);
-  return systemTimeIn_ms;
+void DownloaderThread_initvars(LONGLONG startpos) {
+	m_llFileLengthStartPoint = startpos;
+	m_llFileLength = 0;
+    m_llDownloadLength = -1;
+    m_llBytesRequested = 0;
 }
-
-double Round(double Zahl, int Stellen)
-{
-    double v[] = { 1, 10, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8 };  // mgl. verlängern
-    return floor(Zahl * v[Stellen] + 0.5) / v[Stellen];
-}
-
 UINT CALLBACK DownloaderThread(void* param)
 {
-  //Log("DownloaderThread started");
+  Log("DownloaderThread: started");
   WSADATA w;
-  string firstline;
-  firstline.empty();
-  if(int result = WSAStartup(MAKEWORD(2,2), &w) != 0)
+  if (int result = WSAStartup(MAKEWORD(2,2), &w) != 0)
   {
      Log("DownloaderThread: Winsock 2 konnte nicht gestartet werden! Error %d", result);
      return 1;
   } 
-  while ( m_DownloaderRunning && !m_bComplete ) {
-	if ( m_DownloaderQueue.size() > 0 || ((firstline.length() > 0) && (m_DownloaderQueue.size() == 0)) ) {
-       string line;
-	   m_datalock.Lock();
-	   if ((firstline.length() > 0) && (m_DownloaderQueue.size() == 0)) {
-			line = firstline.c_str();
-		   	m_bComplete = FALSE;
-			m_llFileLengthStartPoint = 0;
-			m_llFileLength = 0;
-	   } else {
-  	        line = GetDownloaderMsg();
-	   }
-	   char url[500];
-	   LONGLONG startpos = -1;
-	   m_llDownloadLength = 0;
+  while ( m_DownloaderShouldRun ) {
+	if ( m_DownloaderQueue.size() > 0 ) {
+      string downloadline;
+      char *url;
+	  LONGLONG startpos = -1;
+      int Socket;
+      { // start new block for CAutoLock
+       CAutoLock lock(&m_datalock);
+
+  	   downloadline = GetDownloaderMsg();
+	   url = new char[strlen(downloadline.c_str())];
 
 	   //Log("DownloaderThread: Got String: %s", line.c_str());
-	   sscanf(line.c_str(), "%s || %I64d", url, &startpos);
-	   if (firstline.length() == 0) {
-	      firstline += line.c_str();
-	   }
+	   sscanf(downloadline.c_str(), "%s || %I64d", url, &startpos);
 	   Log("DownloaderThread: Detected URL: %s Startpos: %I64d", url, startpos);
+       DownloaderThread_initvars(startpos);
+       HRESULT hr = DownloaderThread_CreateTempFile();
+       if (hr != S_OK) {
+           break;
+       }
 
+#pragma region init_connection
 	   char *szHost = NULL;
        char *szPath = NULL;
 	   int szPort = NULL;
-
        int err = GetHostAndPath(url, &szHost, &szPath, &szPort);
        if (err != 0)
        {
@@ -256,7 +360,7 @@ UINT CALLBACK DownloaderThread(void* param)
 
 	   //Log("DownloaderThread: Detected URL: %s Port %d Path %s", szHost, szPort, szPath);
 
-	   int Socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	   Socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	   if (Socket == -1) {
 		   Log("DownloaderThread: Socket konnte nicht erstellt werden! %d", Socket);
        }   
@@ -287,8 +391,11 @@ UINT CALLBACK DownloaderThread(void* param)
           Log("DownloaderThread: Connect fehlgeschlagen!");
 		  ExitThread(1);
        }
+#pragma endregion
 
-	   char request[2000];
+#pragma region sendrequest_and_download_headers
+       // this isn't ideal but big enough :-)
+	   char request[2000]; 
 	   sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%I64d-\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
 	   //Log("Sending Request: %s", request);
 
@@ -307,7 +414,7 @@ UINT CALLBACK DownloaderThread(void* param)
 	   for (int loop = 0; loop < 20; loop++) {
 		   try {
      	       DownloaderThread_GetLine(Socket, HeaderLine);
-			   //Log("DownloaderThread: Headerline: %s", HeaderLine.c_str());
+			   // Log("DownloaderThread: Headerline: %s", HeaderLine.c_str());
 			   // Content-Range: bytes 1555775744-1555808025/1555808026
 			   sscanf(HeaderLine.c_str(), "Content-Length: %I64d", &contlength);
 			   sscanf(HeaderLine.c_str(), "Content-Range: bytes %I64d-%I64d/%I64d", &tmp1, &tmp2, &contrange);
@@ -319,81 +426,81 @@ UINT CALLBACK DownloaderThread(void* param)
 			   Log("DownloaderThread: Headerfailure");
 		   }
 	   }
-	   Log("DownloaderThread: Headers complete Downloadsize: %I64d", m_llDownloadLength);
-	   m_datalock.Unlock();
+       Log("DownloaderThread: Headers complete Downloadsize: %I64d", m_llDownloadLength);
+#pragma endregion
 
-	   char buffer[1024*256];
-	   LONGLONG bytesrec = 0;
-	   int mb_print_counter = 1;
+      } // end CAutoLock lock(m_CritSec);
+
+	   char buffer[1024*256];  // 256kb Buffer
+	   int bytesrec = 0;
 	   LONGLONG bytesrec_sum = 0;
 	   LONGLONG bytesrec_sum_old = 0;
 	   LONGLONG recv_calls = 0;
-	   LONGLONG start = GetSystemTimeInMS();
+	   LONGLONG time_start = GetSystemTimeInMS();
+       LONGLONG time_end;
 	   do {
 		   bytesrec = recv(Socket, buffer, sizeof(buffer), 0);
 		   recv_calls++;
 
+           // Bytes received write them down
 		   if (bytesrec > 0) {
      		   bytesrec_sum += bytesrec;
 
 			   // If we move this under DownloadThread so that we don't need the next if again it doesn't work... no idea why
 		       if (m_DownloaderQueue.size() > 0) {
-			     LONGLONG end = GetSystemTimeInMS();
-  			     int diff = (int)(end-start)/1000;
-				 Log("DownloaderThread: Downloaded MB (found new queue request): %.2Lf tooked time: %d Speed: %.4Lf MB/s", ((float)bytesrec_sum/1024/1024), diff, Round(((float)bytesrec_sum/1024/1024)/diff, 4));
-			     Log("DownloaderThread: found new queue request - so cancel");
+			     time_end = GetSystemTimeInMS();
+			 	 LONGLONG bytesdiff = bytesrec_sum-bytesrec_sum_old;
+		 		 float timediff = ((float)(time_end-time_start))/1000;
+                 // set only new downloadspeed if we have at least a value with a timediff of > 0.2s
+                 if (timediff > 0.2) {
+   	 			   m_lldownspeed = (float)Round(((float)bytesdiff/1024/1024)/timediff, 4);
+                 }
 
-		         if ((m_llBytesRequested > 0) && ((m_llFileLength+m_llFileLengthStartPoint) >= m_llBytesRequested)) {
-				    Log("DownloaderThread: Tick m_hReadWaitEvent Request READY!: Requested until Pos = %I64d, max. Available = %I64d", m_llBytesRequested, m_llFileLength+m_llFileLengthStartPoint);
-				    SetEvent(m_hReadWaitEvent);
- 			     }
-
+                 Log("DownloaderThread: Downloaded (found new queue request): %.2LfMB time: %.2Lf Speed: %.4Lf MB/s Recv: %I64d Last requested: %I64d", ((float)bytesrec_sum/1024/1024), timediff, m_lldownspeed, recv_calls, m_llBytesRequested);
 				 break;
 		       }
 
 		       DownloaderThread_WriteData(buffer, bytesrec);
 
-		       if ((m_llBytesRequested > 0) && ((m_llFileLength+m_llFileLengthStartPoint) >= m_llBytesRequested)) {
-				    Log("DownloadThread: Tick m_hReadWaitEvent Request READY!: Requested until Pos = %I64d, max. Available = %I64d", m_llBytesRequested, m_llFileLength+m_llFileLengthStartPoint);
-				    SetEvent(m_hReadWaitEvent);
-			   }
-  			   if ((int)(bytesrec_sum/1024/1024/5) == mb_print_counter) {
-			     mb_print_counter++;
-			     LONGLONG end = GetSystemTimeInMS();
+               time_end = GetSystemTimeInMS();
+               // print every 3s
+               if ((time_end-time_start) > 3000) {
 			 	 LONGLONG bytesdiff = bytesrec_sum-bytesrec_sum_old;
-		 		 float timediff = (end-start)/1000;
-	 			 m_lldownspeed = (float)Round(((float)bytesdiff/1024/1024)/timediff, 4);
+                 float timediff = ((float)(time_end-time_start))/1000;
+                 m_lldownspeed = (float)Round(((float)bytesdiff/1024/1024)/timediff, 4);
 				 Log("DownloaderThread: Downloaded %.2LfMB time: %.2Lf Speed: %.4Lf MB/s Recv: %I64d Last requested: %I64d", ((float)bytesrec_sum/1024/1024), timediff, m_lldownspeed, recv_calls, m_llBytesRequested);
-				 start = GetSystemTimeInMS();
+				 time_start = GetSystemTimeInMS();
 				 bytesrec_sum_old = bytesrec_sum;
 			   }
-		   } else {
-			   Log("DownloaderThread: 0 or negative bytes received - bytesrec: %I64d", bytesrec);
+		   }
+           else
+           {
+			   Log("DownloaderThread: 0 or negative bytes (error) received - bytesrec: %d", bytesrec);
 		   }
 
-	   } while (bytesrec > 0 && m_DownloaderRunning);
+	   } while (bytesrec > 0 && m_DownloaderShouldRun);
 
-	   Log("DownloaderThread: Download compl./canceled - startpos: %I64d downloaded: %I64d Bytes Header Bytes: %I64d - bytesrec: %I64d - m_DownloaderRunning: %s", startpos, bytesrec_sum, m_llDownloadLength, bytesrec, (m_DownloaderRunning)?"true":"false");
+	   Log("DownloaderThread: Download compl./canceled - startpos: %I64d downloaded: %I64d Bytes Header Bytes: %I64d - bytesrec: %d - m_DownloaderShouldRun: %s", startpos, bytesrec_sum, m_llDownloadLength, bytesrec, (m_DownloaderShouldRun)?"true":"false");
 
-	   if ((startpos == 0) && (bytesrec_sum == m_llDownloadLength || m_llDownloadLength == 0) && !m_DownloaderRunning) {
-		   Log("DownloaderThread: Download completely completed - BREAK!");
-		   m_bComplete = true;
-		   firstline.empty();
-   	       closesocket(Socket); 
-		   break;
+       if ((m_llFileLength+m_llFileLengthStartPoint) == m_llDownloadLength) {
+		   Log("DownloaderThread: Download finshed reached end of download!");
 	   }
 
 	   // Verbindung beenden
 	   closesocket(Socket); 
     }
-    Sleep(50);
+    if ( m_DownloaderShouldRun && (m_DownloaderQueue.size() == 0)) {
+        Sleep(20);
+    }
   }
-  Log("DownloaderThread ended");
 
+  // as we can also break the while set this to false again
+  m_DownloaderShouldRun = false;
+  Log("DownloaderThread: finished");
   ExitThread(0);
 }
 
-void StartDownloader()
+void FireDownloaderThread()
 {
   UINT id;
   m_hDownloader = (HANDLE)_beginthreadex(NULL, 0, DownloaderThread, 0, 0, &id);
@@ -402,16 +509,17 @@ void StartDownloader()
 
 HRESULT CHttpStream::Downloader_Start(TCHAR* szUrl, LONGLONG startpoint) 
 {
+  // char msg[strlen(szUrl)+strlen(_i64toa(startpoint))+4+1];
   char msg[500];
   Log("CHttpStream::Downloader_Start called with URL: %s Startpos: %I64d", szUrl, startpoint);
 
-  sprintf_s(msg, 500, "%s || %I64d", szUrl, startpoint);
+  sprintf_s(msg, sizeof(msg), "%s || %I64d", szUrl, startpoint);
   m_DownloaderQueue.push((string)msg);
 
-  if (!m_hDownloader || !m_DownloaderRunning) 
+  if (!m_hDownloader || !m_DownloaderShouldRun) 
   {
-    m_DownloaderRunning = true;
-    StartDownloader();
+    m_DownloaderShouldRun = true;
+    FireDownloaderThread();
   }
 
   return S_OK;
@@ -419,191 +527,20 @@ HRESULT CHttpStream::Downloader_Start(TCHAR* szUrl, LONGLONG startpoint)
 
 
 
-//************************************************************************
-//  CreateTempFile
-//  Creates a temp file for the HTTP download.
-//***********************************************************************/
-
-HRESULT CHttpStream::CreateTempFile()
-{
-    //CAutoLockDebug mLock(&m_lock, __LINE__, __FILE__,__FUNCTION__);
-
-	TCHAR *szTempPath = NULL;
-	DWORD cch = 0;
-	
-	// Query for the size of the temp path.
-	cch = GetTempPath(0, NULL);
-	if (cch == 0)
-	{
-		return HRESULT_FROM_WIN32(GetLastError());
-	}
-
-	// Allocate a buffer for the name.
-	szTempPath = new TCHAR[cch];
-	if (szTempPath == NULL)
-	{
-		return E_OUTOFMEMORY;
-	}
-
-	// Get the temp path.
-	cch = GetTempPath(cch, szTempPath);
-	if (cch == 0)
-	{
-		delete [] szTempPath;
-		return HRESULT_FROM_WIN32(GetLastError());
-	}
-
-	// Get the temp file name.
-	UINT uval = GetTempFileName(szTempPath, TEXT("ASY"), 0, m_szTempFile);
-
-	delete [] szTempPath;
-
-	if (uval == 0)
-	{
-		return HRESULT_FROM_WIN32(GetLastError());
-	}
-
-	Log("Created Tempfile %s", m_szTempFile);
-
-	// Create the temp file and open the handle for writing. 
-	m_hFileWrite = CreateFile(
-		m_szTempFile,
-		GENERIC_WRITE,
-		FILE_SHARE_READ,
-		NULL,
-		CREATE_ALWAYS,
-		0,
-		NULL
-		);
-
-	if (m_hFileWrite == INVALID_HANDLE_VALUE) 
-	{
-		Log("Could not create temp file %s", m_szTempFile);
-
-		m_szTempFile[0] = TEXT('\0');
-
-		return HRESULT_FROM_WIN32(GetLastError());
-	}
-
-    // Open a read handle for the same temp file.
-    m_hFileRead = CreateFile(
-        m_szTempFile,
-        GENERIC_READ,
-        FILE_SHARE_WRITE | FILE_SHARE_READ,
-        NULL,
-        OPEN_EXISTING,
-        FILE_FLAG_OVERLAPPED,
-        NULL
-        );
-    
-	if (m_hFileRead == INVALID_HANDLE_VALUE) 
-	{
-		Log("Could not open temp file for reading.");
-
-		m_szTempFile[0] = TEXT('\0');
-
-        CloseHandle(m_hFileWrite);
-        m_hFileWrite = INVALID_HANDLE_VALUE;
-
-		return HRESULT_FROM_WIN32(GetLastError());
-	}
-
-	return S_OK;
-}
-
-
-//************************************************************************
-//  Initialize
-//  Initializes the stream.
-//
-//  lpszFileName: Contains the URL of the file to download.
-//***********************************************************************/
-
-HRESULT CHttpStream::ReInitialize(LPCTSTR lpszFileName, LONGLONG startbytes)
-{
-    USES_CONVERSION;
-    //CAutoLockDebug mLock(&m_lock, __LINE__, __FILE__,__FUNCTION__);
-
-    CloseHandle(m_hFileWrite);
-	m_hFileWrite = INVALID_HANDLE_VALUE;
-
-	CloseHandle(m_hFileRead);
-	m_hFileRead = INVALID_HANDLE_VALUE;
-
-	// Delete old temp file to store the data.
-    if (m_szTempFile[0] != TEXT('0'))
-    {
-        DeleteFile(m_szTempFile);
-    }
-
-    // Create a temp file to store the data.
-	HRESULT hr = CreateTempFile();
-    if (FAILED(hr))
-    {
-        return hr;
-    }
-
-	// init vars
-	m_bComplete = FALSE;
-	m_llFileLengthStartPoint = startbytes;
-	m_llFileLength = 0;
-
-	hr = Downloader_Start(m_FileName, startbytes);
-    if (FAILED(hr))
-    {
-        return hr;
-    }
-
-	return S_OK;
-}
-
-
 HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName) 
 {
-    USES_CONVERSION;
-    // CAutoLockDebug mLock(&m_lock, __LINE__, __FILE__,__FUNCTION__);
+    HRESULT hr;
+    Log("(HttpStream) CHttpStream::Initialize File: %s", lpszFileName);
 
-	Log("(HttpStream) CHttpStream::Initialize %s", lpszFileName);
-
-	HRESULT hr = S_OK;
-
-	m_DownloaderRunning = FALSE;
-    m_hDownloader = NULL;
-    m_hReadWaitEvent = INVALID_HANDLE_VALUE;
-    m_hFileWrite = INVALID_HANDLE_VALUE;   // File handle for writing to the temp file.
-    m_hFileRead = INVALID_HANDLE_VALUE;    // File handle for reading from the temp file.
-    m_llFileLength = 0;         // Current length of the temp file, in bytes
-    m_llDownloadLength = 0;
-    m_llFileLengthStartPoint = 0; // Start of Current length in bytes
-    m_bComplete = FALSE;            // TRUE if the download is complete.
-    m_llBytesRequested = 0;     // Size of most recent read request.
-    m_lldownspeed = 1.0;
-
-    // Create the event used to wait for the download.
-    m_hReadWaitEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
-    if (m_hReadWaitEvent == NULL)
-    {
-        return HRESULT_FROM_WIN32(GetLastError());
-    }
-
-    // Create a temp file to store the data.
-	hr = CreateTempFile();
-    if (FAILED(hr))
-    {
-        return hr;
-    }
-
-	// init vars
-	m_bComplete = FALSE;
-	m_llFileLengthStartPoint = 0;
-	m_llFileLength = 0;
-
+    // new file new location new server reset downloadspeed
+    // and copy filename to global filename variable
+    m_lldownspeed = 0.05F; // assume 50kb/s as a start value
 	m_FileName = new TCHAR[strlen(lpszFileName)+1];
 	strcpy(m_FileName, lpszFileName);
 
-    // Start the download. The download will complete
-    // asynchronously.
-	hr = Downloader_Start(m_FileName, 0);
+	m_szTempFile[0] = TEXT('0');
+
+    hr = Downloader_Start(m_FileName, 0);
     if (FAILED(hr))
     {
         return hr;
@@ -612,17 +549,30 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
 	return S_OK;
 }
 
+HRESULT CHttpStream::add_to_downloadqueue(LONGLONG startpos) 
+{
+    HRESULT hr;
 
-// Implementation of CAsyncStream methods
+    hr = Downloader_Start(m_FileName, startpos);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
 
-HRESULT CHttpStream::StartRead(
-	PBYTE pbBuffer,
-	DWORD dwBytesToRead,
-	BOOL bAlign,
-	LPOVERLAPPED pOverlapped,
-	LPBOOL pbPending,
-	LPDWORD pdwBytesRead
-	)
+	return S_OK;
+}
+
+void CHttpStream::WaitForSize(LONGLONG start, LONGLONG end) {
+
+    while (1) {
+        if (m_llFileLengthStartPoint <= start && ((m_llFileLengthStartPoint+m_llFileLength) >= end)) {
+            break;
+        }
+        Sleep(10);
+    }
+}
+
+HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LPOVERLAPPED pOverlapped,LPBOOL pbPending, LPDWORD pdwBytesRead)
 {
     CAutoLock lock(&m_CritSec);
 
@@ -664,10 +614,10 @@ HRESULT CHttpStream::StartRead(
 		Log("CHttpStream::StartRead: Request out of range - wanted start: %I64d end: %I64d min avail: %I64d max avail: %I64d", pos.QuadPart, llReadEnd, m_llFileLengthStartPoint, (m_llFileLengthStartPoint+m_llFileLength));
 		// check if we'll reach the barrier within a few seconds
 		if ((pos.QuadPart > m_llFileLengthStartPoint) || (llReadEnd > (m_llFileLengthStartPoint+m_llFileLength))) {
-			if ((pos.QuadPart > (m_llFileLengthStartPoint+(m_lldownspeed*1024*1024*5))) || (llReadEnd > (m_llFileLengthStartPoint+m_llFileLength+(m_lldownspeed*1024*1024*5)))) {
-				Log("CHttpStream::StartRead: will not reach pos. within 5 seconds - speed: %.4Lf MB/s ", m_lldownspeed);
+			if ((pos.QuadPart > (m_llFileLengthStartPoint+(m_lldownspeed*1024*1024*2))) || (llReadEnd > (m_llFileLengthStartPoint+m_llFileLength+(m_lldownspeed*1024*1024*5)))) {
+				Log("CHttpStream::StartRead: will not reach pos. within 2 seconds - speed: %.4Lf MB/s ", m_lldownspeed);
 			    m_datalock.Unlock();
-                ReInitialize(m_FileName, pos.QuadPart);
+                add_to_downloadqueue(pos.QuadPart);
 			} else {
          		m_datalock.Unlock();
 			   // out of range BUT will reach Limit in 5 sek.
@@ -675,7 +625,7 @@ HRESULT CHttpStream::StartRead(
 		} else {
 		  m_datalock.Unlock();
 		  // out of range BUT not in line so can't reach it
-		  ReInitialize(m_FileName, pos.QuadPart);
+		  add_to_downloadqueue(pos.QuadPart);
 		}
 
         bWait = TRUE;
@@ -691,7 +641,7 @@ HRESULT CHttpStream::StartRead(
             m_pEventSink->Notify(EC_BUFFERING_DATA, TRUE, 0);
         }
 
-		// TODO check for .mkv file ext. - we need at least 65536 bytes to make the filter happy
+/*		// TODO check for .mkv file ext. - we need at least 65536 bytes to make the filter happy
 		if (pos.QuadPart == 0) {
  		   // Wait for the data to be downloaded.
            m_llBytesRequested = max(llReadEnd, 65536);
@@ -699,13 +649,14 @@ HRESULT CHttpStream::StartRead(
 		} else {
  		   // Wait for the data to be downloaded.
            m_llBytesRequested = llReadEnd;
-		}
+		}*/
+        m_llBytesRequested = llReadEnd;
 
-		Log("CHttpStream::StartRead: Wait for m_hReadWaitEvent - wait for size/pos: %I64d", m_llBytesRequested);
-        WaitForSingleObject(m_hReadWaitEvent, INFINITE);
+		Log("CHttpStream::StartRead: wait for size/pos: %I64d", m_llBytesRequested);
+        WaitForSize(pos.QuadPart, m_llBytesRequested);
 		m_llBytesRequested = 0;
 
-     	Log("CHttpStream::StartRead: Wait for m_hReadWaitEvent DONE Startpos requested: %I64d Endpos requested: %I64d, AvailableStart = %I64d, AvailableEnd = %I64d",
+     	Log("CHttpStream::StartRead: Wait DONE Startpos requested: %I64d Endpos requested: %I64d, AvailableStart = %I64d, AvailableEnd = %I64d",
 		pos.QuadPart, llReadEnd, m_llFileLengthStartPoint, (m_llFileLengthStartPoint+m_llFileLength));
 
 		if (m_pEventSink)
@@ -753,13 +704,11 @@ HRESULT CHttpStream::StartRead(
 }
 
 void CHttpStream::Lock() {
-//	Log("CHttpStream::Lock() g_lock: called");
 	// The MS Sample Filter uses here also the m_CritSec but when we do this with MP we have a deadlock
 	g_CritSec.Lock();
 }
 
 void CHttpStream::Unlock() {
-//	Log("CHttpStream::Unlock() g_lock: called");
 	// The MS Sample Filter uses here also the m_CritSec but when we do this with MP we have a deadlock
 	g_CritSec.Unlock();
 }
@@ -776,7 +725,7 @@ HRESULT CHttpStream::EndRead(
 	pos.HighPart = pOverlapped->OffsetHigh;
 
 	BOOL bResult = 0;
-	Log("CHttpStream::EndRead: Read from Temp File Startpos: %I64d (Real: %I64d)", pos.QuadPart, (m_llFileLengthStartPoint+pos.QuadPart));
+    Log("CHttpStream::EndRead: Read done Startpos: %I64d (Real: %I64d) Read up to: %I64d", pos.QuadPart, (m_llFileLengthStartPoint+pos.QuadPart), (pos.QuadPart+(LONGLONG)pdwBytesRead));
 
     // Complete the async I/O request.
     bResult = GetOverlappedResult(m_hFileRead, pOverlapped, pdwBytesRead, TRUE);
@@ -824,21 +773,13 @@ HRESULT CHttpStream::Cancel()
 
 HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
 {
-    CAutoLock lock(&m_datalock);
     ASSERT(pTotal != NULL);
     ASSERT(pAvailable != NULL);
 
-	if (m_bComplete)
-    {
-		*pTotal = m_llFileLength;
-        *pAvailable = *pTotal;
+    CAutoLock lock(&m_datalock);
 
-		return S_OK;
-    }
-    
     // The file is still downloading.
-    LONGLONG cbSize = m_llDownloadLength;
-    if (cbSize == 0)
+    if (m_llDownloadLength <= 0)
     {
 		Log("CHttpStream::Length: is 0 wait until a few bytes are here!");
         if (m_pEventSink)
@@ -847,21 +788,19 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
         }
 
 		m_llBytesRequested = 5;
-        WaitForSingleObject(m_hReadWaitEvent, INFINITE);
+        WaitForSize(m_llFileLengthStartPoint, m_llBytesRequested);
 		m_llBytesRequested = 0;
 
 		if (m_pEventSink)
         {
             m_pEventSink->Notify(EC_BUFFERING_DATA, FALSE, 0);
         }
-
-        *pTotal = m_llFileLength;
-        *pAvailable = *pTotal;
-        return S_OK;
     }
 
-    *pTotal = cbSize;
+    *pTotal = m_llDownloadLength;
     *pAvailable = *pTotal;
+
+    //Log("Length called: return: total: %I64d avail: %I64d", *pTotal, *pAvailable);
 
     return S_OK;
 }
