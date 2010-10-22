@@ -295,7 +295,6 @@ CAsyncOutputPin::SyncReadAligned(
         return hr;
     }
 
-	Log("CAsyncOutputPin::SyncReadAligned Pos: %I64d lLength: %d", llPos, lLength);
     LONG cbActual;
     hr = m_pIo->SyncReadAligned(llPos,
                                 lLength,
@@ -344,7 +343,6 @@ CAsyncOutputPin::SyncRead(
     LONG lLength,       // nr bytes required
     BYTE* pBuffer)      // write data here
 {
-	Log("CAsyncOutputPin::SyncRead Pos: %I64d lLength: %d", llPosition, lLength);
     return m_pIo->SyncRead(llPosition, lLength, pBuffer);
 }
 

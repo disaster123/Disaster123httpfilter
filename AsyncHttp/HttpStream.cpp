@@ -431,7 +431,8 @@ UINT CALLBACK DownloaderThread(void* param)
 
       } // end CAutoLock lock(m_CritSec);
 
-	   char buffer[1024*256];  // 256kb Buffer
+       // 20kb Buffer is fast enough but also slow enough to let a recheck of the download queue happen
+	   char buffer[1024*20];  
 	   int bytesrec = 0;
 	   LONGLONG bytesrec_sum = 0;
 	   LONGLONG bytesrec_sum_old = 0;
