@@ -17,6 +17,8 @@
 
 #include "asynchttp.h"
 
+#include "alloctracing.h"
+
 extern const char *getVersion();
 
 //* Create a new instance of this class

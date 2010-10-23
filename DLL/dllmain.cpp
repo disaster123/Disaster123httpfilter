@@ -22,6 +22,8 @@
 #include <shlobj.h>
 #include <queue>
 
+#include "..\AsyncHttp\alloctracing.h"
+
 using namespace std;
 
 const WCHAR *szAsyncHttp = L"CSSR SPriebe Http Filter";

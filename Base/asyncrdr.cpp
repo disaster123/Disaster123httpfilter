@@ -13,6 +13,8 @@
 #include "asyncio.h"
 #include "asyncrdr.h"
 
+#include "alloctracing.h"
+
 extern void Log(const char *fmt, ...);
 
 // --- CAsyncOutputPin implementation ---

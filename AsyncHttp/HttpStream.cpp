@@ -27,7 +27,9 @@
 
 #include "..\Base\asyncio.h"
 #include "HttpStream.h"
+
 #include "AutoLockDebug.h"
+#include "alloctracing.h"
 
 extern void Log(const char *fmt, ...);
 extern void StopLogger();
