@@ -10,6 +10,8 @@
 * 
 *************************************************************************/
 
+#include "..\Base\stdafx.h"
+
 #include <streams.h>
 
 #include "..\Base\asyncio.h"
@@ -22,7 +24,7 @@
 #include <shlobj.h>
 #include <queue>
 
-#include "..\AsyncHttp\alloctracing.h"
+#include "..\Base\alloctracing.h"
 
 using namespace std;
 

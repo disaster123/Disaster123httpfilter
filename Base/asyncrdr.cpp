@@ -8,12 +8,13 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //------------------------------------------------------------------------------
 
+#include "stdafx.h"
 
 #include <streams.h>
 #include "asyncio.h"
 #include "asyncrdr.h"
 
-#include "alloctracing.h"
+#include "..\Base\alloctracing.h"
 
 extern void Log(const char *fmt, ...);
 

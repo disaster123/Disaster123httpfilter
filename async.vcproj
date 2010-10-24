@@ -238,7 +238,7 @@
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
 			<File
-				RelativePath=".\AsyncHttp\alloctracing.h"
+				RelativePath=".\Base\alloctracing.h"
 				>
 			</File>
 			<File
@@ -259,6 +259,14 @@
 			</File>
 			<File
 				RelativePath=".\AsyncHttp\HttpStream.h"
+				>
+			</File>
+			<File
+				RelativePath=".\Base\SharedInclude.h"
+				>
+			</File>
+			<File
+				RelativePath=".\Base\stdafx.h"
 				>
 			</File>
 		</Filter>

@@ -10,6 +10,8 @@
 //
 //////////////////////////////////////////////////////////////////////////
 
+#include "..\Base\stdafx.h"
+
 #include <iostream>
 #include <winsock2.h>
 
@@ -29,7 +31,7 @@
 #include "HttpStream.h"
 
 #include "AutoLockDebug.h"
-#include "alloctracing.h"
+#include "..\Base\alloctracing.h"
 
 extern void Log(const char *fmt, ...);
 extern void StopLogger();
@@ -166,7 +168,9 @@ HRESULT DownloaderThread_CreateTempFile()
 {
 	TCHAR *szTempPath = NULL;
 	DWORD cch = 0;
-	
+
+    char* tmp = new char[1000];
+
 	// Query for the size of the temp path.
 	cch = GetTempPath(0, NULL);
 	if (cch == 0)
@@ -302,14 +306,17 @@ DWORD DownloaderThread_WriteData(char *buffer, int buffersize)
 
 void DownloaderThread_GetLine(int socket, string& line) {
 	line.clear();
-    for(char c; recv(socket, &c, 1, 0) > 0; line += c)
+    char c;
+    while (recv(socket, &c, 1, 0) > 0)
     {
+        if(c == '\r') {
+            continue;
+        }
         if(c == '\n')
         {
-			// Log("Got Line Complete: %s", line.c_str());
-			line += c;
             return;
         }
+        line += c;
     }
     throw CreateSocketError(); 
 }
@@ -399,7 +406,7 @@ UINT CALLBACK DownloaderThread(void* param)
        // this isn't ideal but big enough :-)
 	   char request[2000]; 
 	   sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%I64d-\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
-	   //Log("Sending Request: %s", request);
+	   Log("Sending Request: %s", request);
 
 	   try {
 	      DownloaderThread_SendAll(Socket, request, sizeof(request));
@@ -416,14 +423,16 @@ UINT CALLBACK DownloaderThread(void* param)
 	   for (int loop = 0; loop < 20; loop++) {
 		   try {
      	       DownloaderThread_GetLine(Socket, HeaderLine);
-			   // Log("DownloaderThread: Headerline: %s", HeaderLine.c_str());
-			   // Content-Range: bytes 1555775744-1555808025/1555808026
-			   sscanf(HeaderLine.c_str(), "Content-Length: %I64d", &contlength);
-			   sscanf(HeaderLine.c_str(), "Content-Range: bytes %I64d-%I64d/%I64d", &tmp1, &tmp2, &contrange);
-			   if (strcmp(HeaderLine.c_str(), "\r\n") == 0) {
+               if (HeaderLine.length() == 0) {
 				   m_llDownloadLength = max(contrange, contlength);
 				   break;
 			   }
+
+               Log("DownloaderThread: Got Headerline: %s", HeaderLine.c_str());
+
+               // Content-Range: bytes 1555775744-1555808025/1555808026
+			   sscanf(HeaderLine.c_str(), "Content-Length: %I64d", &contlength);
+			   sscanf(HeaderLine.c_str(), "Content-Range: bytes %I64d-%I64d/%I64d", &tmp1, &tmp2, &contrange);
 		   } catch(...) {
 			   Log("DownloaderThread: Headerfailure");
 		   }

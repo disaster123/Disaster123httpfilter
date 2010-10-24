@@ -6,11 +6,12 @@
 // Copyright (c) Microsoft Corporation.  All rights reserved.
 //------------------------------------------------------------------------------
 
+#include "stdafx.h"
 
 #include <streams.h>
 #include "asyncio.h"
 
-#include "alloctracing.h"
+#include "..\Base\alloctracing.h"
 
 // --- CAsyncRequest ---
 

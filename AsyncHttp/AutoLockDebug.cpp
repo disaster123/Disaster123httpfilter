@@ -1,2 +1,3 @@
+#include "..\Base\stdafx.h"
 #include "AutoLockDebug.h"
-#include "alloctracing.h"
+#include "..\Base\alloctracing.h"

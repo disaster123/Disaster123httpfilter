@@ -10,6 +10,8 @@
 * 
 *************************************************************************/
 
+#include "..\Base\stdafx.h"
+
 #include <streams.h>
 
 #include "..\Base\asyncio.h"
@@ -17,7 +19,7 @@
 
 #include "asynchttp.h"
 
-#include "alloctracing.h"
+#include "..\Base\alloctracing.h"
 
 extern const char *getVersion();
 
@@ -25,7 +27,12 @@ extern const char *getVersion();
 CUnknown * WINAPI CAsyncFilterHttp::CreateInstance(LPUNKNOWN pUnk, HRESULT *phr)
 {
     ASSERT(phr);
+#ifdef _DEBUG
+	Log("(asynchttp) CAsyncFilterHttp::CreateInstance DEBUG Version: %s", getVersion());
+#endif
+#ifndef _DEBUG
 	Log("(asynchttp) CAsyncFilterHttp::CreateInstance Version: %s", getVersion());
+#endif
 
     //  DLLEntry does the right thing with the return code and
     //  the returned value on failure
