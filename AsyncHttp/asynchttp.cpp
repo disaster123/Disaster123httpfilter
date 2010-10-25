@@ -29,8 +29,10 @@ CUnknown * WINAPI CAsyncFilterHttp::CreateInstance(LPUNKNOWN pUnk, HRESULT *phr)
     ASSERT(phr);
 #ifdef _DEBUG
 	Log("(asynchttp) CAsyncFilterHttp::CreateInstance DEBUG Version: %s", getVersion());
-#endif
-#ifndef _DEBUG
+    #ifdef _CRTDBG_MAP_ALLOC
+       _CrtSetDbgFlag ( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF );
+    #endif
+#else
 	Log("(asynchttp) CAsyncFilterHttp::CreateInstance Version: %s", getVersion());
 #endif
 
