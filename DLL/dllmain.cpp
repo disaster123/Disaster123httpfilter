@@ -83,7 +83,7 @@ int g_cTemplates = sizeof(g_Templates) / sizeof(g_Templates[0]);
 
 void LogPath(char* dest, char* name)
 {
-  sprintf(dest,"C:\\Temp\\async.%s",name);
+  sprintf(dest,"C:\\Temp\\Disaster123HTTPFilter.%s",name);
 }
 
 
