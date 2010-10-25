@@ -220,10 +220,6 @@
 				>
 			</File>
 			<File
-				RelativePath=".\AsyncHttp\AutoLockDebug.cpp"
-				>
-			</File>
-			<File
 				RelativePath=".\DLL\dllmain.cpp"
 				>
 			</File>
