@@ -2,9 +2,9 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="9,00"
-	Name="Async"
+	Name="Disaster123HTTPFilter"
 	ProjectGUID="{76FC45D6-69EF-41D6-91A4-BD3DAFAC67EB}"
-	RootNamespace="Async"
+	RootNamespace="Disaster123HTTPFilter"
 	Keyword="Win32Proj"
 	TargetFrameworkVersion="131072"
 	>
