@@ -54,7 +54,7 @@
 				WarningLevel="3"
 				Detect64BitPortabilityProblems="false"
 				DebugInformationFormat="4"
-				CallingConvention="2"
+				CallingConvention="0"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -259,10 +259,6 @@
 			</File>
 			<File
 				RelativePath=".\AsyncHttp\HttpStream.h"
-				>
-			</File>
-			<File
-				RelativePath=".\Base\SharedInclude.h"
 				>
 			</File>
 			<File

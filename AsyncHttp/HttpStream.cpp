@@ -186,7 +186,8 @@ HRESULT DownloaderThread_CreateTempFile()
 	TCHAR *szTempPath = NULL;
 	DWORD cch = 0;
 
-    char* tmp = new char[1000];
+    // TODO: Stefan Mem leak - for testing Memory allocation debuggin - this is still not working
+    //char* tmp = new char[1000];
 
 	// Query for the size of the temp path.
 	cch = GetTempPath(0, NULL);
