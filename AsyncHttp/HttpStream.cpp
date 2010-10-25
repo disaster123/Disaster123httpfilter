@@ -17,9 +17,9 @@
 
 #include <stdio.h>
 #include <streams.h>
+#include <string>
 #include <sstream>
 #include <fstream>
-#include <crtdbg.h>
 #include <atlconv.h>
 #include <math.h>
 #include <time.h>
@@ -84,6 +84,22 @@ CHttpStream::~CHttpStream()
     StopLogger();
 }
 
+void stringreplace(string& str, string search, string replace)
+{
+    ASSERT( search != replace );
+
+    string::size_type pos = 0;
+    while ( (pos = str.find(search, pos)) != string::npos ) {
+        if (replace.length() == 0) {
+            str.erase( pos, search.size() );
+            pos = pos - search.length() + 1;
+        } else {
+            str.replace( pos, search.size(), replace );
+            pos = pos - search.length() + replace.length() + 1;
+        }
+    }
+}
+
 double Round(double Zahl, int Stellen)
 {
     double v[] = { 1, 10, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8 };  // mgl. verlängern
@@ -102,6 +118,7 @@ ULONGLONG GetSystemTimeInMS() {
   uli.HighPart = fileTime.dwHighDateTime;
 
   ULONGLONG systemTimeIn_ms(uli.QuadPart/10000);
+
   return systemTimeIn_ms;
 }
 
@@ -281,8 +298,12 @@ void DownloaderThread_SendAll(int socket, const char* const buf, const int size)
 
 DWORD DownloaderThread_WriteData(char *buffer, int buffersize)
 {
+#ifndef AUTOLOCK_DEBUG
     CAutoLock lock(&m_datalock);
-	//CAutoLockDebug WriteData(&m_lock, __LINE__, __FILE__,__FUNCTION__);
+#endif
+#ifdef AUTOLOCK_DEBUG
+	CAutoLockDebug lock(&m_datalock, __LINE__, __FILE__,__FUNCTION__);
+#endif
 
     BOOL bResult = 0;
     DWORD cbWritten = 0;
@@ -343,7 +364,12 @@ UINT CALLBACK DownloaderThread(void* param)
 	  LONGLONG startpos = -1;
       int Socket;
       { // start new block for CAutoLock
-       CAutoLock lock(&m_datalock);
+#ifndef AUTOLOCK_DEBUG
+          CAutoLock lock(&m_datalock);
+#endif
+#ifdef AUTOLOCK_DEBUG
+     	  CAutoLockDebug lock(&m_datalock, __LINE__, __FILE__,__FUNCTION__);
+#endif
 
   	   downloadline = GetDownloaderMsg();
 	   url = new char[strlen(downloadline.c_str())];
@@ -406,7 +432,11 @@ UINT CALLBACK DownloaderThread(void* param)
        // this isn't ideal but big enough :-)
 	   char request[2000]; 
 	   sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%I64d-\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
-	   Log("Sending Request: %s", request);
+       string request_logline = request;
+       
+       stringreplace(request_logline, "\r", "");
+       stringreplace(request_logline, "\n\n", "");
+       Log("Sending Request: %s", request_logline.c_str());
 
 	   try {
 	      DownloaderThread_SendAll(Socket, request, sizeof(request));
@@ -485,24 +515,23 @@ UINT CALLBACK DownloaderThread(void* param)
 				 bytesrec_sum_old = bytesrec_sum;
 			   }
 		   }
-           else
-           {
-			   Log("DownloaderThread: 0 or negative bytes (error) received - bytesrec: %d", bytesrec);
-		   }
 
 	   } while (bytesrec > 0 && m_DownloaderShouldRun);
 
-	   Log("DownloaderThread: Download compl./canceled - startpos: %I64d downloaded: %I64d Bytes Header Bytes: %I64d - bytesrec: %d - m_DownloaderShouldRun: %s", startpos, bytesrec_sum, m_llDownloadLength, bytesrec, (m_DownloaderShouldRun)?"true":"false");
-
        if ((m_llFileLength+m_llFileLengthStartPoint) == m_llDownloadLength) {
-		   Log("DownloaderThread: Download finshed reached end of download!");
-	   }
+		   Log("DownloaderThread: Download finshed reached end of file! - startpos: %I64d downloaded: %I64d Bytes Remote file size: %I64d", startpos, bytesrec_sum, m_llDownloadLength);
+       } else {
+         if (bytesrec < 0) {
+       	   Log("DownloaderThread: error received - error: %d", bytesrec);
+         }
+         Log("DownloaderThread: Download compl./canceled - startpos: %I64d downloaded: %I64d Bytes Remote file size: %I64d - m_DownloaderShouldRun: %s", startpos, bytesrec_sum, m_llDownloadLength, (m_DownloaderShouldRun)?"true":"false");
+       }
 
 	   // Verbindung beenden
 	   closesocket(Socket); 
     }
     if ( m_DownloaderShouldRun && (m_DownloaderQueue.size() == 0)) {
-        Sleep(20);
+        Sleep(50);
     }
   }
 
@@ -594,14 +623,25 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
     *pbPending = FALSE;
     BOOL bWait = FALSE;
 
+#ifndef AUTOLOCK_DEBUG
     CAutoLock lock(&m_CritSec);
+#endif
+#ifdef AUTOLOCK_DEBUG
+    CAutoLockDebug lock(&m_CritSec, __LINE__, __FILE__,__FUNCTION__);
+#endif
+
+#ifdef MANLOCK_DEBUG
+    Log("CHttpStream::StartRead: m_datalock.Lock");
+#endif
     m_datalock.Lock();
+#ifdef MANLOCK_DEBUG
+    Log("CHttpStream::StartRead: m_datalock.Lock done - UNLOCK WILL FOLLOW");
+#endif
 
     pos.HighPart = pOverlapped->OffsetHigh;
     pos.LowPart = pOverlapped->Offset;
 
 	LONGLONG llReadEnd = pos.QuadPart + dwBytesToRead;
-
 
     Log("CHttpStream::StartRead: Startpos requested: %I64d Endpos requested: %I64d, AvailableStart = %I64d, AvailableEnd = %I64d, Diff Endpos: %I64d",
  	  	 pos.QuadPart, llReadEnd, m_llFileLengthStartPoint, (m_llFileLengthStartPoint+m_llFileLength), ((m_llFileLengthStartPoint+m_llFileLength)-llReadEnd));
@@ -665,6 +705,9 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
     // Lock the datalock
     // this prevents the downloadthread from starting a new donwloadpos,
     // closing, reopening the file handle while we want to read, ...
+#ifdef MANLOCK_DEBUG
+    Log("CHttpStream::StartRead: m_datalock.Lock()");
+#endif
     m_datalock.Lock();
 
 	//Log("CHttpStream::StartRead: Read from Temp File BytesToRead: %u Startpos: %I64d", dwBytesToRead, pos.QuadPart);
@@ -688,6 +731,9 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
 	//Log("CHttpStream::StartRead: Read from Temp File");
 
     m_datalock.Unlock();
+#ifdef MANLOCK_DEBUG
+    Log("CHttpStream::StartRead: m_datalock.Unlock() done");
+#endif
 
     if (bResult == 0)
     {
@@ -727,13 +773,19 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
 void CHttpStream::Lock() {
 	// The MS Sample Filter uses here also the m_CritSec but when we do this with MP we have a deadlock
     // with Graphedit it works fine
+#ifdef MANLOCK_DEBUG
+    Log("CHttpStream::Lock(): Lock");
+#endif
 	g_CritSec.Lock();
 }
 
 void CHttpStream::Unlock() {
 	// The MS Sample Filter uses here also the m_CritSec but when we do this with MP we have a deadlock
     // with Graphedit it works fine
-	g_CritSec.Unlock();
+#ifdef MANLOCK_DEBUG
+    Log("CHttpStream::Unlock(): Unlock");
+#endif
+    g_CritSec.Unlock();
 }
 
 HRESULT CHttpStream::EndRead(
@@ -741,29 +793,33 @@ HRESULT CHttpStream::EndRead(
     LPDWORD pdwBytesRead
     )
 {
-	CAutoLock lock(&m_CritSec);
+#ifndef AUTOLOCK_DEBUG
+    CAutoLock lock(&m_CritSec);
+#endif
+#ifdef AUTOLOCK_DEBUG
+    CAutoLockDebug lock(&m_CritSec, __LINE__, __FILE__,__FUNCTION__);
+#endif
 
     LARGE_INTEGER pos;
 	pos.LowPart = pOverlapped->Offset;
 	pos.HighPart = pOverlapped->OffsetHigh;
 
 	BOOL bResult = 0;
-    Log("CHttpStream::EndRead: Read done Startpos: %I64d (Real: %I64d) Read up to: %I64d", pos.QuadPart, (m_llFileLengthStartPoint+pos.QuadPart), (pos.QuadPart+(LONGLONG)pdwBytesRead));
 
     // Complete the async I/O request.
     m_datalock.Lock();
     bResult = GetOverlappedResult(m_hFileRead, pOverlapped, pdwBytesRead, TRUE);
     m_datalock.Unlock();
 
+    Log("CHttpStream::EndRead: Read done Startpos: %I64d (Real: %I64d) Read up to: %I64d", pos.QuadPart, (m_llFileLengthStartPoint+pos.QuadPart), (pos.QuadPart+(LONGLONG)pdwBytesRead));
+
     if (!bResult)
     {
 		DWORD err = GetLastError();
 		LPTSTR Error = 0;
-		FormatMessage( FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,                    NULL,                    err,                    0,                    (LPTSTR)&Error,                    0,                    NULL);
+		FormatMessage( FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM, NULL, err, 0, (LPTSTR)&Error, 0, NULL);
         Log("CHttpStream::EndRead: File error! %s", Error);
-        if ( Error ) {
-           LocalFree(Error);
-        }
+        SAFE_DELETE(Error);
 
         return HRESULT_FROM_WIN32(err);
     }
@@ -804,7 +860,12 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
     ASSERT(pTotal != NULL);
     ASSERT(pAvailable != NULL);
 
+#ifndef AUTOLOCK_DEBUG
     CAutoLock lock(&m_datalock);
+#endif
+#ifdef AUTOLOCK_DEBUG
+    CAutoLockDebug lock(&m_datalock, __LINE__, __FILE__,__FUNCTION__);
+#endif
 
     // The file is still downloading.
     if (m_llDownloadLength <= 0)
@@ -825,10 +886,16 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
         }
     }
 
-    *pTotal = m_llDownloadLength;
-    *pAvailable = *pTotal;
+    /*
+    if (strcmp(m_FileName, ".flv") > 0) {
+        *pTotal = m_llDownloadLength;
+        *pAvailable = m_llFileLength + m_llFileLengthStartPoint;
+    } else {*/
+        *pTotal = m_llDownloadLength;
+        *pAvailable = *pTotal;
+//    }
 
-    //Log("Length called: return: total: %I64d avail: %I64d", *pTotal, *pAvailable);
+    Log("Length called: return: total: %I64d avail: %I64d", *pTotal, *pAvailable);
 
     return S_OK;
 }
