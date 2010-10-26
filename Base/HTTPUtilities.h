@@ -97,7 +97,7 @@ int initWSA()
   WSADATA w;
   if (int result = WSAStartup(MAKEWORD(2,2), &w) != 0)
   {
-     Log("DownloaderThread: Winsock 2 konnte nicht gestartet werden! Error %d", result);
+     Log("initWSA: Winsock 2 konnte nicht gestartet werden! Error %d", result);
      return 1;
   } 
  
@@ -118,7 +118,7 @@ int Initialize_connection(char* szHost, int szPort)
 
 	   Socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	   if (Socket == -1) {
-		   Log("DownloaderThread: Socket konnte nicht erstellt werden! %d", Socket);
+		   Log("Initialize_connection: Socket konnte nicht erstellt werden! %d", Socket);
 		   return -1;
        }   
        sockaddr_in service; // Normale IPv4 Struktur
@@ -127,25 +127,25 @@ int Initialize_connection(char* szHost, int szPort)
 	   // szHost to IP
 	   hostent* phe = gethostbyname(szHost);
 	   if(phe == NULL) {
-          Log("DownloaderThread: Hostname %s konnte nicht aufgelöst werden.", szHost);
+          Log("Initialize_connection: Hostname %s konnte nicht aufgelöst werden.", szHost);
 		  return -1;
        }
 	   if(phe->h_addrtype != AF_INET) {
-          Log("DownloaderThread: Keine IPv4 Adresse gefunden!");
+          Log("Initialize_connection: Keine IPv4 Adresse gefunden!");
 		  return -1;
        }
        if(phe->h_length != 4) {
-          Log("DownloaderThread: Keine IPv4 Adresse gefunden!");
+          Log("Initialize_connection: Keine IPv4 Adresse gefunden!");
 		  return -1;
        }
 	   char *szIP = inet_ntoa(*reinterpret_cast<in_addr*>(*phe->h_addr_list));
-	   Log("DownloaderThread: Host: %s mit IP: %s", szHost, szIP);
+	   Log("Initialize_connection: Host: %s mit IP: %s", szHost, szIP);
        service.sin_addr.s_addr = inet_addr(szIP);
 
 	   int result = connect(Socket, reinterpret_cast<sockaddr*>(&service), sizeof(service));
 	   if (result == -1) {
 		  closesocket(Socket);
-          Log("DownloaderThread: Connect fehlgeschlagen!");
+          Log("Initialize_connection: Connect fehlgeschlagen!");
 		  return -1;
        }
 

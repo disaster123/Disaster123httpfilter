@@ -426,6 +426,8 @@ HRESULT CHttpStream::ServerPreCheck(char* url)
 	  char *szHost = NULL;
       char *szPath = NULL;
 	  int szPort = NULL;
+	  
+	  Log("ServerPreCheck: Start for URL: %s", url);
 
 	  // get Host, Path and Port from URL
       if (GetHostAndPath(url, &szHost, &szPath, &szPort) != 0)
@@ -449,14 +451,19 @@ HRESULT CHttpStream::ServerPreCheck(char* url)
 	   try {
   	      send_to_socket(Socket, request, strlen(request));
 	   } catch(exception& ex) {
+	      closesocket(Socket);
+		  SAFE_DELETE_ARRAY(szHost);
+		  SAFE_DELETE_ARRAY(szPath);
           Log("ServerPreCheck: Fehler beim senden des Requests %s!", ex);
 	      return E_FAIL;
 	   }
 
-	   GetHeaderHTTPHeaderData(Socket, &m_llDownloadLength);
+	   LONGLONG tmpsize;
+	   GetHeaderHTTPHeaderData(Socket, &tmpsize);
 
-       Log("ServerPreCheck: Headers complete Downloadsize: %I64d", m_llDownloadLength);
+	   Log("ServerPreCheck: Filesize: %I64d", tmpsize);
 
+	   closesocket(Socket);
        SAFE_DELETE_ARRAY(szHost);
 	   SAFE_DELETE_ARRAY(szPath);
 
