@@ -92,7 +92,6 @@ public:
         if (NULL == pmt) 
 		{
 			GUID subtype = MEDIASUBTYPE_NULL;
-			GUID formattype = FORMAT_None;
 
 			// Workaround to support AVI files in this sample.
 			TCHAR *szExtension = PathFindExtension(OLE2T(lpwszFileName));
@@ -101,23 +100,22 @@ public:
 			{
 				subtype = MEDIASUBTYPE_Avi;
                 Log("subtype MEDIASUBTYPE_Avi");
-			} else if (szExtension && _tcscmp(szExtension, TEXT(".mkv")) == 0)
+			}
+			else if (szExtension && _tcscmp(szExtension, TEXT(".mkv")) == 0)
 			{
 				subtype = MEDIASUBTYPE_H264;
                 Log("subtype MEDIASUBTYPE_H264 / mkv");
 			}
-			else {
+			else
+			{
 				Log("subtype MEDIASUBTYPE_NULL / Wildcard");
 			}
 
 			cmt.SetType(&MEDIATYPE_Stream);
             cmt.SetSubtype(&subtype);
-
-			//cmt.SetFormatType(&formattype);
         }
         else 
 		{
-			// cmt = *pmt;
   		    HRESULT hr = CopyMediaType(&cmt, pmt);
    			if (FAILED(hr))
 			{
@@ -128,6 +126,7 @@ public:
 		HRESULT hr = m_FileStream.Initialize(OLE2T(lpwszFileName));
 		if (FAILED(hr))
 		{
+			Log("asynchttp: Initialisation failed! Cannot load URL!");
 			return hr;
 		}
 

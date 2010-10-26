@@ -57,6 +57,7 @@ CHttpStream::~CHttpStream()
 	Log("~CHttpStream() called");
 
 	m_DownloaderShouldRun = false;
+	SAFE_DELETE_ARRAY(m_FileName);
 
 	// give the thread the time to finish
 	Sleep(500);
@@ -140,23 +141,28 @@ int GetHostAndPath(const char *szUrl, char **pszHost, char **pszPath, int *pszPo
     char *Path;
     int Port;
 
-    Host = (char *) malloc (strlen(szUrl));
-    Path = (char *) malloc (strlen(szUrl));
+    Host = (char *) malloc (strlen(szUrl)+1);
+    Path = (char *) malloc (strlen(szUrl)+1);
 
 	if (sscanf(szUrl, "http://%[^:]:%d/%s", Host, &Port, Path) == 3) {
 		   //Log("sscanf was 3 %s %d %s", Host, Port, Path);
 		   *pszPort = Port;
 	   	   *pszHost = Host;
 	       *pszPath = Path;
+
 	     return 0;
     } else if (sscanf(szUrl, "http://%[^/]/%s", Host, Path) == 2) {
 		   //Log("sscanf was 2 %s %s", Host, Path);
 		   *pszPort = 80;
 		   *pszHost = Host;
 		   *pszPath = Path;
+
 	     return 0;
    }
   
+   SAFE_DELETE(Host);
+   SAFE_DELETE(Path);
+
    return 1;
 }
 
@@ -185,9 +191,6 @@ HRESULT DownloaderThread_CreateTempFile()
 {
 	TCHAR *szTempPath = NULL;
 	DWORD cch = 0;
-
-    // TODO: Stefan Mem leak - for testing Memory allocation debuggin - this is still not working
-    //char* tmp = new char[1000];
 
 	// Query for the size of the temp path.
 	cch = GetTempPath(0, NULL);
@@ -381,6 +384,7 @@ UINT CALLBACK DownloaderThread(void* param)
        DownloaderThread_initvars(startpos);
        HRESULT hr = DownloaderThread_CreateTempFile();
        if (hr != S_OK) {
+		   SAFE_DELETE_ARRAY(url);
            break;
        }
 
@@ -391,14 +395,22 @@ UINT CALLBACK DownloaderThread(void* param)
        int err = GetHostAndPath(url, &szHost, &szPath, &szPort);
        if (err != 0)
        {
+		   SAFE_DELETE_ARRAY(url);
+		   SAFE_DELETE_ARRAY(szHost);
+		   SAFE_DELETE_ARRAY(szPath);
 		   Log("DownloaderThread: GetHostAndPath Error", HRESULT_FROM_WIN32(err));
+		   return E_FAIL;
        }
 
 	   //Log("DownloaderThread: Detected URL: %s Port %d Path %s", szHost, szPort, szPath);
 
 	   Socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	   if (Socket == -1) {
+		   SAFE_DELETE_ARRAY(url);
+		   SAFE_DELETE_ARRAY(szHost);
+		   SAFE_DELETE_ARRAY(szPath);
 		   Log("DownloaderThread: Socket konnte nicht erstellt werden! %d", Socket);
+		   return E_FAIL;
        }   
        sockaddr_in service; // Normale IPv4 Struktur
        service.sin_family = AF_INET; // AF_INET für IPv4, für IPv6 wäre es AF_INET6
@@ -406,16 +418,25 @@ UINT CALLBACK DownloaderThread(void* param)
 	   // szHost to IP
 	   hostent* phe = gethostbyname(szHost);
 	   if(phe == NULL) {
+	      SAFE_DELETE_ARRAY(url);
+		  SAFE_DELETE_ARRAY(szHost);
+		  SAFE_DELETE_ARRAY(szPath);
           Log("DownloaderThread: Hostname %s konnte nicht aufgelöst werden.", szHost);
-		  ExitThread(1);
+		  return E_FAIL;
        }
 	   if(phe->h_addrtype != AF_INET) {
+	      SAFE_DELETE_ARRAY(url);
+		  SAFE_DELETE_ARRAY(szHost);
+		  SAFE_DELETE_ARRAY(szPath);
           Log("DownloaderThread: Keine IPv4 Adresse gefunden!");
-		  ExitThread(1);
+		  return E_FAIL;
        }
        if(phe->h_length != 4) {
+		  SAFE_DELETE_ARRAY(url);
+  	      SAFE_DELETE_ARRAY(szHost);
+	      SAFE_DELETE_ARRAY(szPath);
           Log("DownloaderThread: Keine IPv4 Adresse gefunden!");
-		  ExitThread(1);
+		  return E_FAIL;
        }
 	   char *szIP = inet_ntoa(*reinterpret_cast<in_addr*>(*phe->h_addr_list));
 	   Log("DownloaderThread: Host: %s mit IP: %s", szHost, szIP);
@@ -424,8 +445,9 @@ UINT CALLBACK DownloaderThread(void* param)
 	   int result = connect(Socket, reinterpret_cast<sockaddr*>(&service), sizeof(service));
 	   if (result == -1) {
 		  closesocket(Socket);
+		  SAFE_DELETE_ARRAY(url);
           Log("DownloaderThread: Connect fehlgeschlagen!");
-		  ExitThread(1);
+		  return E_FAIL;
        }
 #pragma endregion
 
@@ -471,10 +493,17 @@ UINT CALLBACK DownloaderThread(void* param)
        Log("DownloaderThread: Headers complete Downloadsize: %I64d", m_llDownloadLength);
 #pragma endregion
 
+	   SAFE_DELETE_ARRAY(url);
+	   SAFE_DELETE_ARRAY(szHost);
+	   SAFE_DELETE_ARRAY(szPath);
       } // end CAutoLock lock(m_CritSec);
 
-       // 20kb Buffer is fast enough but also slow enough to let a recheck of the download queue happen
-	   char buffer[1024*20];  
+       // 20kb Buffer is fast enough but also slow enough to let
+	   // a recheck of the download queue happen
+	   // TODO:
+	   // what happens if we have REALLY fast network connection?
+	   // do we have to dynamically adjust the buffer?
+	   char buffer[1024*20];
 	   int bytesrec = 0;
 	   LONGLONG bytesrec_sum = 0;
 	   LONGLONG bytesrec_sum_old = 0;
@@ -529,7 +558,8 @@ UINT CALLBACK DownloaderThread(void* param)
        }
 
 	   // Verbindung beenden
-	   closesocket(Socket); 
+	   closesocket(Socket);
+	   SAFE_DELETE_ARRAY(url);
     }
     if ( m_DownloaderShouldRun && (m_DownloaderQueue.size() == 0)) {
         Sleep(50);
@@ -581,6 +611,10 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
 	strcpy(m_FileName, lpszFileName);
 
 	m_szTempFile[0] = TEXT('0');
+
+	// TODO: - check for Server compatiblity 
+	// return E_FAIL if it is NOT OK
+	//return E_FAIL;
 
     hr = Downloader_Start(m_FileName, 0);
     if (FAILED(hr))
