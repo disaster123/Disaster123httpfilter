@@ -37,6 +37,10 @@
 extern void Log(const char *fmt, ...);
 extern void StopLogger();
 
+/*
+ GLOBAL Variable declaration like blocking, .. locking... filenames...
+*/
+#pragma region global var declaration
 static CCritSec m_datalock;
 static CCritSec m_CritSec;
 static CCritSec g_CritSec;
@@ -52,9 +56,11 @@ LONGLONG	m_llDownloadLength = 0;
 LONGLONG	m_llFileLengthStartPoint = 0; // Start of Current length in bytes
 LONGLONG    m_llBytesRequested = 0;     // Size of most recent read request.
 float m_lldownspeed;
+#pragma endregion
 
-
-
+/*
+ This is the stuff the downloads thread needs and holds
+*/
 #pragma region Downloader
 
 string DownloaderThread_GetDownloaderMsg()
@@ -168,20 +174,6 @@ HRESULT DownloaderThread_CreateTempFile()
 }
 
 
-void DownloaderThread_SendAll(int socket, const char* const buf, const int size)
-{
-    int bytesSent = 0; // Anzahl Bytes die wir bereits vom Buffer gesendet haben
-    do
-    {
-        int result = send(socket, buf + bytesSent, size - bytesSent, 0);
-        if(result < 0) // Wenn send einen Wert < 0 zurück gibt deutet dies auf einen Fehler hin.
-        {
-            throw CreateSocketError();
-        }
-        bytesSent += result;
-    } while(bytesSent < size);
-}
-
 DWORD DownloaderThread_WriteData(char *buffer, int buffersize)
 {
 #ifndef AUTOLOCK_DEBUG
@@ -211,181 +203,88 @@ DWORD DownloaderThread_WriteData(char *buffer, int buffersize)
 	return 0;
 }
 
-void DownloaderThread_GetLine(int socket, string& line) {
-	line.clear();
-    char c;
-    while (recv(socket, &c, 1, 0) > 0)
-    {
-        if(c == '\r') {
-            continue;
-        }
-        if(c == '\n')
-        {
-            return;
-        }
-        line += c;
-    }
-    throw CreateSocketError(); 
-}
-
 void DownloaderThread_initvars(LONGLONG startpos) {
 	m_llFileLengthStartPoint = startpos;
 	m_llFileLength = 0;
     m_llDownloadLength = -1;
     m_llBytesRequested = 0;
 }
+
 UINT CALLBACK DownloaderThread(void* param)
 {
   Log("DownloaderThread: started");
-  WSADATA w;
-  if (int result = WSAStartup(MAKEWORD(2,2), &w) != 0)
-  {
-     Log("DownloaderThread: Winsock 2 konnte nicht gestartet werden! Error %d", result);
-     return 1;
-  } 
+
+  initWSA();
+
   while ( m_DownloaderShouldRun ) {
+
 	if ( m_DownloaderQueue.size() > 0 ) {
-      string downloadline;
       char *url;
 	  LONGLONG startpos = -1;
       int Socket;
-      { // start new block for CAutoLock
+	  char *szHost = NULL;
+      char *szPath = NULL;
+	  int szPort = NULL;
+
+	  { // start new block for CAutoLock
 #ifndef AUTOLOCK_DEBUG
           CAutoLock lock(&m_datalock);
-#endif
-#ifdef AUTOLOCK_DEBUG
+#else
      	  CAutoLockDebug lock(&m_datalock, __LINE__, __FILE__,__FUNCTION__);
 #endif
 
-  	   downloadline = DownloaderThread_GetDownloaderMsg();
-	   url = new char[strlen(downloadline.c_str())];
-
-	   //Log("DownloaderThread: Got String: %s", line.c_str());
-	   sscanf(downloadline.c_str(), "%s || %I64d", url, &startpos);
-	   Log("DownloaderThread: Detected URL: %s Startpos: %I64d", url, startpos);
+	   // get message from the queue AND URL and POS from queuestring
+       DownloaderThread_geturlpos(&url, &startpos, DownloaderThread_GetDownloaderMsg());
+	   Log("DownloaderThread: URL: %s Startpos: %I64d", url, startpos);
+       // reinit all variables for THIS download
        DownloaderThread_initvars(startpos);
-       HRESULT hr = DownloaderThread_CreateTempFile();
-       if (hr != S_OK) {
-		   SAFE_DELETE_ARRAY(url);
-           break;
-       }
 
-#pragma region init_connection
-	   char *szHost = NULL;
-       char *szPath = NULL;
-	   int szPort = NULL;
-       int err = GetHostAndPath(url, &szHost, &szPath, &szPort);
-       if (err != 0)
+	   // create TEMP File
+       DownloaderThread_CreateTempFile();
+
+	   // get Host, Path and Port from URL
+       if (GetHostAndPath(url, &szHost, &szPath, &szPort) != 0)
        {
 		   SAFE_DELETE_ARRAY(url);
 		   SAFE_DELETE_ARRAY(szHost);
 		   SAFE_DELETE_ARRAY(szPath);
-		   Log("DownloaderThread: GetHostAndPath Error", HRESULT_FROM_WIN32(err));
-		   return E_FAIL;
+		   Log("DownloaderThread: GetHostAndPath Error");
+		   break;
        }
 
-	   //Log("DownloaderThread: Detected URL: %s Port %d Path %s", szHost, szPort, szPath);
-
-	   Socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	   Socket = Initialize_connection(szHost, szPort);
 	   if (Socket == -1) {
 		   SAFE_DELETE_ARRAY(url);
 		   SAFE_DELETE_ARRAY(szHost);
 		   SAFE_DELETE_ARRAY(szPath);
-		   Log("DownloaderThread: Socket konnte nicht erstellt werden! %d", Socket);
-		   return E_FAIL;
-       }   
-       sockaddr_in service; // Normale IPv4 Struktur
-       service.sin_family = AF_INET; // AF_INET für IPv4, für IPv6 wäre es AF_INET6
-	   service.sin_port = htons(szPort); // Das HTTP-Protokoll benutzt Port 80
-	   // szHost to IP
-	   hostent* phe = gethostbyname(szHost);
-	   if(phe == NULL) {
-	      SAFE_DELETE_ARRAY(url);
-		  SAFE_DELETE_ARRAY(szHost);
-		  SAFE_DELETE_ARRAY(szPath);
-          Log("DownloaderThread: Hostname %s konnte nicht aufgelöst werden.", szHost);
-		  return E_FAIL;
-       }
-	   if(phe->h_addrtype != AF_INET) {
-	      SAFE_DELETE_ARRAY(url);
-		  SAFE_DELETE_ARRAY(szHost);
-		  SAFE_DELETE_ARRAY(szPath);
-          Log("DownloaderThread: Keine IPv4 Adresse gefunden!");
-		  return E_FAIL;
-       }
-       if(phe->h_length != 4) {
-		  SAFE_DELETE_ARRAY(url);
-  	      SAFE_DELETE_ARRAY(szHost);
-	      SAFE_DELETE_ARRAY(szPath);
-          Log("DownloaderThread: Keine IPv4 Adresse gefunden!");
-		  return E_FAIL;
-       }
-	   char *szIP = inet_ntoa(*reinterpret_cast<in_addr*>(*phe->h_addr_list));
-	   Log("DownloaderThread: Host: %s mit IP: %s", szHost, szIP);
-       service.sin_addr.s_addr = inet_addr(szIP);
+		   Log("DownloaderThread: Socket could not be initialised.");
+		   break;
+	   }
 
-	   int result = connect(Socket, reinterpret_cast<sockaddr*>(&service), sizeof(service));
-	   if (result == -1) {
-		  closesocket(Socket);
-		  SAFE_DELETE_ARRAY(url);
-          Log("DownloaderThread: Connect fehlgeschlagen!");
-		  return E_FAIL;
-       }
-#pragma endregion
-
-#pragma region sendrequest_and_download_headers
-       // this isn't ideal but big enough :-)
-	   char request[2000]; 
-	   sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%I64d-\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
-       string request_logline = request;
-       
-       stringreplace(request_logline, "\r", "");
-       stringreplace(request_logline, "\n\n", "");
-       Log("Sending Request: %s", request_logline.c_str());
+	   char *request = buildrequeststring(szHost, szPort, szPath, startpos);
 
 	   try {
-	      DownloaderThread_SendAll(Socket, request, sizeof(request));
+  	      send_to_socket(Socket, request, strlen(request));
 	   } catch(exception& ex) {
           Log("DownloaderThread: Fehler beim senden des Requests %s!", ex);
-		  ExitThread(1);
+		  break;
 	   }
 
-       // Read Header and ignore
-	   string HeaderLine;
-	   LONGLONG tmp1,tmp2,contlength,contrange;
-	   contlength=0;
-       contrange=0;
-	   for (int loop = 0; loop < 20; loop++) {
-		   try {
-     	       DownloaderThread_GetLine(Socket, HeaderLine);
-               if (HeaderLine.length() == 0) {
-				   m_llDownloadLength = max(contrange, contlength);
-				   break;
-			   }
+	   GetHeaderHTTPHeaderData(Socket, &m_llDownloadLength);
 
-               Log("DownloaderThread: Got Headerline: %s", HeaderLine.c_str());
-
-               // Content-Range: bytes 1555775744-1555808025/1555808026
-			   sscanf(HeaderLine.c_str(), "Content-Length: %I64d", &contlength);
-			   sscanf(HeaderLine.c_str(), "Content-Range: bytes %I64d-%I64d/%I64d", &tmp1, &tmp2, &contrange);
-		   } catch(...) {
-			   Log("DownloaderThread: Headerfailure");
-		   }
-	   }
        Log("DownloaderThread: Headers complete Downloadsize: %I64d", m_llDownloadLength);
-#pragma endregion
 
 	   SAFE_DELETE_ARRAY(url);
 	   SAFE_DELETE_ARRAY(szHost);
 	   SAFE_DELETE_ARRAY(szPath);
       } // end CAutoLock lock(m_CritSec);
 
-       // 20kb Buffer is fast enough but also slow enough to let
+       // 50kb Buffer is fast enough but also slow enough to let
 	   // a recheck of the download queue happen
 	   // TODO:
 	   // what happens if we have REALLY fast network connection?
 	   // do we have to dynamically adjust the buffer?
-	   char buffer[1024*20];
+	   char buffer[1024*50];
 	   int bytesrec = 0;
 	   LONGLONG bytesrec_sum = 0;
 	   LONGLONG bytesrec_sum_old = 0;
@@ -400,7 +299,6 @@ UINT CALLBACK DownloaderThread(void* param)
 		   if (bytesrec > 0) {
      		   bytesrec_sum += bytesrec;
 
-			   // If we move this under DownloadThread so that we don't need the next if again it doesn't work... no idea why
 		       if (m_DownloaderQueue.size() > 0) {
 			     time_end = GetSystemTimeInMS();
 			 	 LONGLONG bytesdiff = bytesrec_sum-bytesrec_sum_old;
@@ -456,7 +354,9 @@ UINT CALLBACK DownloaderThread(void* param)
 
 #pragma endregion
 
-
+/*
+ This is the stuff the main real class holds (CHTTPStream) thread needs and holds
+*/
 #pragma region CHTTPStream
 
 CHttpStream::~CHttpStream()
@@ -529,7 +429,6 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
     // and copy filename to global filename variable
     m_lldownspeed = 0.05F; // assume 50kb/s as a start value
 
-	SAFE_DELETE_ARRAY(m_FileName);
 	m_FileName = new TCHAR[strlen(lpszFileName)+1];
 	strcpy(m_FileName, lpszFileName);
 

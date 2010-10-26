@@ -91,3 +91,147 @@ std::runtime_error CreateSocketError()
     } 
   return std::runtime_error(msg);
 }
+
+int initWSA()
+{
+  WSADATA w;
+  if (int result = WSAStartup(MAKEWORD(2,2), &w) != 0)
+  {
+     Log("DownloaderThread: Winsock 2 konnte nicht gestartet werden! Error %d", result);
+     return 1;
+  } 
+ 
+  return 0;
+}
+
+void DownloaderThread_geturlpos(char **url, LONGLONG *startpos, string down_queue_entry)
+{
+  // this isn't perfect but the URL can't be bigger than the whole line :-)
+  *url = new char[strlen(down_queue_entry.c_str())];
+
+  sscanf(down_queue_entry.c_str(), "%s || %I64d", *url, &*startpos);
+}
+
+int Initialize_connection(char* szHost, int szPort)
+{
+	   int Socket = -1;
+
+	   Socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	   if (Socket == -1) {
+		   Log("DownloaderThread: Socket konnte nicht erstellt werden! %d", Socket);
+		   return -1;
+       }   
+       sockaddr_in service; // Normale IPv4 Struktur
+       service.sin_family = AF_INET; // AF_INET für IPv4, für IPv6 wäre es AF_INET6
+	   service.sin_port = htons(szPort); // Das HTTP-Protokoll benutzt Port 80
+	   // szHost to IP
+	   hostent* phe = gethostbyname(szHost);
+	   if(phe == NULL) {
+          Log("DownloaderThread: Hostname %s konnte nicht aufgelöst werden.", szHost);
+		  return -1;
+       }
+	   if(phe->h_addrtype != AF_INET) {
+          Log("DownloaderThread: Keine IPv4 Adresse gefunden!");
+		  return -1;
+       }
+       if(phe->h_length != 4) {
+          Log("DownloaderThread: Keine IPv4 Adresse gefunden!");
+		  return -1;
+       }
+	   char *szIP = inet_ntoa(*reinterpret_cast<in_addr*>(*phe->h_addr_list));
+	   Log("DownloaderThread: Host: %s mit IP: %s", szHost, szIP);
+       service.sin_addr.s_addr = inet_addr(szIP);
+
+	   int result = connect(Socket, reinterpret_cast<sockaddr*>(&service), sizeof(service));
+	   if (result == -1) {
+		  closesocket(Socket);
+          Log("DownloaderThread: Connect fehlgeschlagen!");
+		  return -1;
+       }
+
+   return Socket;
+}
+
+char* buildrequeststring(char* szHost, int szPort, char* szPath, LONGLONG startpos)
+{
+	// this is bad also cause we need another allocation at the buttom but how to determine the size?
+	char request[2000];
+
+	//int len = _snprintf(NULL, 999999, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%I64d-\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
+	//request = (char*) malloc (sizeof(char) * (len + 1));
+	
+    sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%I64d-\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
+ 
+	string request_logline = request;
+    stringreplace(request_logline, "\r", "");
+    stringreplace(request_logline, "\n\n", "");
+    Log("Sending Request: %s", request_logline.c_str());
+	
+    char* rstr = (char*) malloc (sizeof(char) * (strlen(request) + 1));
+	strcpy(rstr, request);
+
+	return rstr;
+}
+
+void GetLineFromSocket(int socket, string& line) {
+	line.clear();
+    char c;
+    while (recv(socket, &c, 1, 0) > 0)
+    {
+        if(c == '\r') {
+            continue;
+        }
+        if(c == '\n')
+        {
+            return;
+        }
+        line += c;
+    }
+    throw CreateSocketError(); 
+}
+
+void GetHeaderHTTPHeaderData(int Socket, LONGLONG* filesize)
+{
+       // Read Header and ignore
+	   string HeaderLine;
+	   LONGLONG tmp1,tmp2;
+	   LONGLONG contlength = -1;
+	   LONGLONG contrange = -1;
+	   contlength=0;
+       contrange=0;
+	   // get headerlines - max of 25
+	   for (int loop = 0; loop < 25; loop++) {
+		   try {
+     	       GetLineFromSocket(Socket, HeaderLine);
+			   // Empty header (\n\n) finish the loop
+               if (HeaderLine.length() == 0) {
+				   *filesize = max(contrange, contlength);
+				   break;
+			   }
+
+               Log("DownloaderThread: Header: %s", HeaderLine.c_str());
+
+               // Content-Range: bytes 1555775744-1555808025/1555808026
+			   sscanf(HeaderLine.c_str(), "Content-Length: %I64d", &contlength);
+			   sscanf(HeaderLine.c_str(), "Content-Range: bytes %I64d-%I64d/%I64d", &tmp1, &tmp2, &contrange);
+		   } catch(exception& ex) {
+			   Log("DownloaderThread: Cannot get Headerlines: %s", ex);
+		   }
+	   }
+	   // Loop was running too long but assign values
+	   *filesize = max(contrange, contlength);
+}
+
+void send_to_socket(int socket, const char* const buf, const int size)
+{
+    int bytesSent = 0; // Anzahl Bytes die wir bereits vom Buffer gesendet haben
+    do
+    {
+        int result = send(socket, buf + bytesSent, size - bytesSent, 0);
+        if(result < 0) // Wenn send einen Wert < 0 zurück gibt deutet dies auf einen Fehler hin.
+        {
+            throw CreateSocketError();
+        }
+        bytesSent += result;
+    } while(bytesSent < size);
+}
