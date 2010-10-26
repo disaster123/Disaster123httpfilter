@@ -190,7 +190,7 @@ void GetLineFromSocket(int socket, string& line) {
     throw CreateSocketError(); 
 }
 
-void GetHeaderHTTPHeaderData(int Socket, LONGLONG* filesize)
+void GetHeaderHTTPHeaderData(int Socket, LONGLONG* filesize, int* statuscode)
 {
        // Read Header and ignore
 	   string HeaderLine;
@@ -199,23 +199,33 @@ void GetHeaderHTTPHeaderData(int Socket, LONGLONG* filesize)
 	   LONGLONG contrange = -1;
 	   contlength=0;
        contrange=0;
+       *statuscode = 999;
 	   // get headerlines - max of 25
 	   for (int loop = 0; loop < 25; loop++) {
 		   try {
      	       GetLineFromSocket(Socket, HeaderLine);
+               if (loop == 0) {
+                   // this MUST contain the statuscode
+                   // HTTP/1.1 206 Partial Content
+                   Log("GetHeaderHTTPHeaderData: Statusline: %s", HeaderLine.c_str());
+                   if (sscanf(HeaderLine.c_str(), "HTTP/1.1 %d ", &*statuscode) != 1) {
+                     Log("GetHeaderHTTPHeaderData: Statusline was unknown");
+                     break;
+                   }
+               }
 			   // Empty header (\n\n) finish the loop
                if (HeaderLine.length() == 0) {
 				   *filesize = max(contrange, contlength);
 				   break;
 			   }
 
-               Log("DownloaderThread: Header: %s", HeaderLine.c_str());
+               Log("GetHeaderHTTPHeaderData: Header: %s", HeaderLine.c_str());
 
                // Content-Range: bytes 1555775744-1555808025/1555808026
 			   sscanf(HeaderLine.c_str(), "Content-Length: %I64d", &contlength);
 			   sscanf(HeaderLine.c_str(), "Content-Range: bytes %I64d-%I64d/%I64d", &tmp1, &tmp2, &contrange);
 		   } catch(exception& ex) {
-			   Log("DownloaderThread: Cannot get Headerlines: %s", ex);
+			   Log("GetHeaderHTTPHeaderData: Cannot get Headerlines: %s", ex);
 		   }
 	   }
 	   // Loop was running too long but assign values

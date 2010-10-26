@@ -214,8 +214,6 @@ UINT CALLBACK DownloaderThread(void* param)
 {
   Log("DownloaderThread: started");
 
-  initWSA();
-
   while ( m_DownloaderShouldRun ) {
 
 	if ( m_DownloaderQueue.size() > 0 ) {
@@ -267,10 +265,13 @@ UINT CALLBACK DownloaderThread(void* param)
   	      send_to_socket(Socket, request, strlen(request));
 	   } catch(exception& ex) {
           Log("DownloaderThread: Fehler beim senden des Requests %s!", ex);
+          SAFE_DELETE_ARRAY(request);
 		  break;
 	   }
+       SAFE_DELETE_ARRAY(request);
 
-	   GetHeaderHTTPHeaderData(Socket, &m_llDownloadLength);
+       int statuscode = 999;
+       GetHeaderHTTPHeaderData(Socket, &m_llDownloadLength, &statuscode);
 
        Log("DownloaderThread: Headers complete Downloadsize: %I64d", m_llDownloadLength);
 
@@ -438,13 +439,13 @@ HRESULT CHttpStream::ServerPreCheck(char* url)
 		   return E_FAIL;
       }
 
-	   Socket = Initialize_connection(szHost, szPort);
-	   if (Socket == -1) {
+	  Socket = Initialize_connection(szHost, szPort);
+	  if (Socket == -1) {
 		   SAFE_DELETE_ARRAY(szHost);
 		   SAFE_DELETE_ARRAY(szPath);
 		   Log("ServerPreCheck: Socket could not be initialised.");
 		   return E_FAIL;
-	   }
+	  }
 
 	   char *request = buildrequeststring(szHost, szPort, szPath, 0);
 
@@ -454,18 +455,31 @@ HRESULT CHttpStream::ServerPreCheck(char* url)
 	      closesocket(Socket);
 		  SAFE_DELETE_ARRAY(szHost);
 		  SAFE_DELETE_ARRAY(szPath);
+          SAFE_DELETE_ARRAY(request);
           Log("ServerPreCheck: Fehler beim senden des Requests %s!", ex);
 	      return E_FAIL;
 	   }
+       SAFE_DELETE_ARRAY(request);
 
 	   LONGLONG tmpsize;
-	   GetHeaderHTTPHeaderData(Socket, &tmpsize);
+       int statuscode = 999;
+       GetHeaderHTTPHeaderData(Socket, &tmpsize, &statuscode);
 
-	   Log("ServerPreCheck: Filesize: %I64d", tmpsize);
+       Log("ServerPreCheck: Filesize: %I64d Statuscode: %d", tmpsize, statuscode);
+
+       if (statuscode != 206) {
+            Log("\nServerPreCheck: SERVER NOT SUPPORTED!\n");
+	        closesocket(Socket);
+            SAFE_DELETE_ARRAY(szHost);
+	        SAFE_DELETE_ARRAY(szPath);
+          return E_FAIL;
+       }
 
 	   closesocket(Socket);
        SAFE_DELETE_ARRAY(szHost);
 	   SAFE_DELETE_ARRAY(szPath);
+
+   Log("\nServerPreCheck: SERVER OK => SUPPORTED!\n");
 
    return S_OK;
 }
@@ -474,6 +488,10 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
 {
     HRESULT hr;
     Log("(HttpStream) CHttpStream::Initialize File: %s", lpszFileName);
+    if (initWSA() != 0) {
+        Log("CHttpStream::Initialize: Couldn't init WSA");
+        return E_FAIL;
+    }
 
     // new file new location new server reset downloadspeed
     // and copy filename to global filename variable
@@ -485,10 +503,12 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
 	m_szTempFile[0] = TEXT('0');
 
 	// TODO: - check for Server compatiblity 
+    // extended poss - like no range support, ...
 	hr = ServerPreCheck(m_FileName);
-	// return E_FAIL if it is NOT OK
-	//return E_FAIL;
-
+    if (FAILED(hr))
+    {
+        return hr;
+    }
 
     hr = Downloader_Start(m_FileName, 0);
     if (FAILED(hr))
