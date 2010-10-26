@@ -103,7 +103,7 @@ HRESULT DownloaderThread_CreateTempFile()
 	}
 
 	// Get the temp file name.
-	UINT uval = GetTempFileName(szTempPath, TEXT("ASYNCDOWNLOADER"), 0, m_szTempFile);
+	UINT uval = GetTempFileName(szTempPath, TEXT("DisasterHTTPFilter"), 0, m_szTempFile);
 
 	delete [] szTempPath;
 
@@ -420,6 +420,49 @@ HRESULT CHttpStream::Downloader_Start(TCHAR* szUrl, LONGLONG startpoint)
 
 
 
+HRESULT CHttpStream::ServerPreCheck(char* url)
+{
+      int Socket;
+	  char *szHost = NULL;
+      char *szPath = NULL;
+	  int szPort = NULL;
+
+	  // get Host, Path and Port from URL
+      if (GetHostAndPath(url, &szHost, &szPath, &szPort) != 0)
+      {
+		   SAFE_DELETE_ARRAY(szHost);
+		   SAFE_DELETE_ARRAY(szPath);
+		   Log("ServerPreCheck: GetHostAndPath Error");
+		   return E_FAIL;
+      }
+
+	   Socket = Initialize_connection(szHost, szPort);
+	   if (Socket == -1) {
+		   SAFE_DELETE_ARRAY(szHost);
+		   SAFE_DELETE_ARRAY(szPath);
+		   Log("ServerPreCheck: Socket could not be initialised.");
+		   return E_FAIL;
+	   }
+
+	   char *request = buildrequeststring(szHost, szPort, szPath, 0);
+
+	   try {
+  	      send_to_socket(Socket, request, strlen(request));
+	   } catch(exception& ex) {
+          Log("ServerPreCheck: Fehler beim senden des Requests %s!", ex);
+	      return E_FAIL;
+	   }
+
+	   GetHeaderHTTPHeaderData(Socket, &m_llDownloadLength);
+
+       Log("ServerPreCheck: Headers complete Downloadsize: %I64d", m_llDownloadLength);
+
+       SAFE_DELETE_ARRAY(szHost);
+	   SAFE_DELETE_ARRAY(szPath);
+
+   return S_OK;
+}
+
 HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName) 
 {
     HRESULT hr;
@@ -435,8 +478,10 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
 	m_szTempFile[0] = TEXT('0');
 
 	// TODO: - check for Server compatiblity 
+	hr = ServerPreCheck(m_FileName);
 	// return E_FAIL if it is NOT OK
 	//return E_FAIL;
+
 
     hr = Downloader_Start(m_FileName, 0);
     if (FAILED(hr))

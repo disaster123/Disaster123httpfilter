@@ -81,9 +81,7 @@ public:
 	void OnError(DWORD dwErr); 
 
 	HRESULT CHttpStream::Downloader_Start(TCHAR* szUrl, LONGLONG startpoint);
-
-private:
-	HRESULT CreateTempFile();
+	HRESULT CHttpStream::ServerPreCheck(char* url);
 
 private:
 
