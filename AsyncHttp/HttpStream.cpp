@@ -271,7 +271,8 @@ UINT CALLBACK DownloaderThread(void* param)
        SAFE_DELETE_ARRAY(request);
 
        int statuscode = 999;
-       GetHeaderHTTPHeaderData(Socket, &m_llDownloadLength, &statuscode);
+       string headers;
+       GetHTTPHeaders(Socket, &m_llDownloadLength, &statuscode, headers);
 
        Log("DownloaderThread: Headers complete Downloadsize: %I64d", m_llDownloadLength);
 
@@ -463,7 +464,8 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
 
 	   LONGLONG tmpsize;
        int statuscode = 999;
-       string headers = GetHeaderHTTPHeaderData(Socket, &tmpsize, &statuscode);
+       string headers;
+       GetHTTPHeaders(Socket, &tmpsize, &statuscode, headers);
 
        Log("ServerPreCheck: Filesize: %I64d Statuscode: %d", tmpsize, statuscode);
 

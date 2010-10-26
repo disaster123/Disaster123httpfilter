@@ -190,11 +190,10 @@ void GetLineFromSocket(int socket, string& line) {
     throw CreateSocketError(); 
 }
 
-string GetHeaderHTTPHeaderData(int Socket, LONGLONG* filesize, int* statuscode)
+void GetHTTPHeaders(int Socket, LONGLONG* filesize, int* statuscode, string& headers)
 {
        // Read Header and ignore
 	   string HeaderLine;
-       string headers;
 	   LONGLONG tmp1,tmp2;
 	   LONGLONG contlength = -1;
 	   LONGLONG contrange = -1;
@@ -234,8 +233,6 @@ string GetHeaderHTTPHeaderData(int Socket, LONGLONG* filesize, int* statuscode)
 	   }
 	   // Loop was running too long but assign values
 	   *filesize = max(contrange, contlength);
-
-   return headers;
 }
 
 void send_to_socket(int socket, const char* const buf, const int size)
