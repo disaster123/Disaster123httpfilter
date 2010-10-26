@@ -258,6 +258,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\Base\HTTPUtilities.h"
+				>
+			</File>
+			<File
 				RelativePath=".\Base\stdafx.h"
 				>
 			</File>

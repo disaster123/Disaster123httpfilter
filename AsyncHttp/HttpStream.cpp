@@ -29,6 +29,7 @@
 
 #include "..\Base\asyncio.h"
 #include "HttpStream.h"
+#include "..\Base\HTTPUtilities.h"
 
 #include "AutoLockDebug.h"
 #include "..\Base\alloctracing.h"
@@ -52,78 +53,11 @@ LONGLONG	m_llFileLengthStartPoint = 0; // Start of Current length in bytes
 LONGLONG    m_llBytesRequested = 0;     // Size of most recent read request.
 float m_lldownspeed;
 
-CHttpStream::~CHttpStream()
-{
-	Log("~CHttpStream() called");
 
-	m_DownloaderShouldRun = false;
-	SAFE_DELETE_ARRAY(m_FileName);
 
-	// give the thread the time to finish
-	Sleep(500);
+#pragma region Downloader
 
-	if (m_hFileWrite != INVALID_HANDLE_VALUE)
-	{
-		CloseHandle(m_hFileWrite);
-	}
-
-    if (m_hFileRead != INVALID_HANDLE_VALUE)
-    {
-        CloseHandle(m_hFileRead);
-    }
-
-	if (m_szTempFile[0] != TEXT('0'))
-    {
-        DeleteFile(m_szTempFile);
-    }
-
-    if (m_hDownloader != INVALID_HANDLE_VALUE)
-    {
-       CloseHandle(m_hDownloader);
-    }
-
-    StopLogger();
-}
-
-void stringreplace(string& str, string search, string replace)
-{
-    ASSERT( search != replace );
-
-    string::size_type pos = 0;
-    while ( (pos = str.find(search, pos)) != string::npos ) {
-        if (replace.length() == 0) {
-            str.erase( pos, search.size() );
-            pos = pos - search.length() + 1;
-        } else {
-            str.replace( pos, search.size(), replace );
-            pos = pos - search.length() + replace.length() + 1;
-        }
-    }
-}
-
-double Round(double Zahl, int Stellen)
-{
-    double v[] = { 1, 10, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8 };  // mgl. verlängern
-    return floor(Zahl * v[Stellen] + 0.5) / v[Stellen];
-}
-
-ULONGLONG GetSystemTimeInMS() {
-  SYSTEMTIME systemTime;
-  GetSystemTime(&systemTime);
-
-  FILETIME fileTime;
-  SystemTimeToFileTime(&systemTime, &fileTime);
-
-  ULARGE_INTEGER uli;
-  uli.LowPart = fileTime.dwLowDateTime; // could use memcpy here!
-  uli.HighPart = fileTime.dwHighDateTime;
-
-  ULONGLONG systemTimeIn_ms(uli.QuadPart/10000);
-
-  return systemTimeIn_ms;
-}
-
-string GetDownloaderMsg()
+string DownloaderThread_GetDownloaderMsg()
 {
   if ( m_DownloaderQueue.size() == 0 )
   {
@@ -135,58 +69,6 @@ string GetDownloaderMsg()
   return ret;
 }
 
-int GetHostAndPath(const char *szUrl, char **pszHost, char **pszPath, int *pszPort)
-{
-    char *Host;
-    char *Path;
-    int Port;
-
-    Host = (char *) malloc (strlen(szUrl)+1);
-    Path = (char *) malloc (strlen(szUrl)+1);
-
-	if (sscanf(szUrl, "http://%[^:]:%d/%s", Host, &Port, Path) == 3) {
-		   //Log("sscanf was 3 %s %d %s", Host, Port, Path);
-		   *pszPort = Port;
-	   	   *pszHost = Host;
-	       *pszPath = Path;
-
-	     return 0;
-    } else if (sscanf(szUrl, "http://%[^/]/%s", Host, Path) == 2) {
-		   //Log("sscanf was 2 %s %s", Host, Path);
-		   *pszPort = 80;
-		   *pszHost = Host;
-		   *pszPath = Path;
-
-	     return 0;
-   }
-  
-   SAFE_DELETE(Host);
-   SAFE_DELETE(Path);
-
-   return 1;
-}
-
-std::runtime_error CreateSocketError()
-{
-    int error = WSAGetLastError();
-    char* msg = NULL;
-    if(FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
-                     NULL, error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                     reinterpret_cast<char*>(&msg), 0, NULL))
-    {
-        try
-        {
-			Log("CreateSocketError: %s", msg);
-            LocalFree(msg);
-        }
-        catch(...)
-        {
-            LocalFree(msg);
-            throw;
-        }
-    } 
-  return std::runtime_error(msg);
-}
 HRESULT DownloaderThread_CreateTempFile()
 {
 	TCHAR *szTempPath = NULL;
@@ -375,7 +257,7 @@ UINT CALLBACK DownloaderThread(void* param)
      	  CAutoLockDebug lock(&m_datalock, __LINE__, __FILE__,__FUNCTION__);
 #endif
 
-  	   downloadline = GetDownloaderMsg();
+  	   downloadline = DownloaderThread_GetDownloaderMsg();
 	   url = new char[strlen(downloadline.c_str())];
 
 	   //Log("DownloaderThread: Got String: %s", line.c_str());
@@ -572,6 +454,45 @@ UINT CALLBACK DownloaderThread(void* param)
   ExitThread(0);
 }
 
+#pragma endregion
+
+
+#pragma region CHTTPStream
+
+CHttpStream::~CHttpStream()
+{
+	Log("~CHttpStream() called");
+
+	m_DownloaderShouldRun = false;
+	SAFE_DELETE_ARRAY(m_FileName);
+
+	// give the thread the time to finish
+	Sleep(500);
+
+	if (m_hFileWrite != INVALID_HANDLE_VALUE)
+	{
+		CloseHandle(m_hFileWrite);
+	}
+
+    if (m_hFileRead != INVALID_HANDLE_VALUE)
+    {
+        CloseHandle(m_hFileRead);
+    }
+
+	if (m_szTempFile[0] != TEXT('0'))
+    {
+        DeleteFile(m_szTempFile);
+    }
+
+    if (m_hDownloader != INVALID_HANDLE_VALUE)
+    {
+       CloseHandle(m_hDownloader);
+    }
+
+    StopLogger();
+}
+
+
 void FireDownloaderThread()
 {
   UINT id;
@@ -607,6 +528,8 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
     // new file new location new server reset downloadspeed
     // and copy filename to global filename variable
     m_lldownspeed = 0.05F; // assume 50kb/s as a start value
+
+	SAFE_DELETE_ARRAY(m_FileName);
 	m_FileName = new TCHAR[strlen(lpszFileName)+1];
 	strcpy(m_FileName, lpszFileName);
 
@@ -934,3 +857,5 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
 
     return S_OK;
 }
+
+#pragma endregion
