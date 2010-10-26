@@ -51,10 +51,10 @@ public:
 
 	virtual HRESULT Cancel() = 0;
     virtual HRESULT Length(LONGLONG *pTotal, LONGLONG *pAvailable) = 0;
+
     // NOTE: In the IAsyncReader::Length method, pAvailable can be NULL.
     // However, CAsyncStream::Length is never called with pAvailable equal
     // to NULL (because CAsyncIo will always pass in a valid pointer).
-
     virtual DWORD Alignment() = 0;
 
     virtual void Lock() = 0;        // For serializing calls to this object.

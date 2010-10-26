@@ -282,12 +282,12 @@ UINT CALLBACK DownloaderThread(void* param)
 	   SAFE_DELETE_ARRAY(szPath);
       } // end CAutoLock lock(m_CritSec);
 
-       // 50kb Buffer is fast enough but also slow enough to let
+       // 20kb Buffer is fast enough but also slow enough to let
 	   // a recheck of the download queue happen
 	   // TODO:
 	   // what happens if we have REALLY fast network connection?
 	   // do we have to dynamically adjust the buffer?
-	   char buffer[1024*50];
+	   char buffer[1024*20];
 	   int bytesrec = 0;
 	   LONGLONG bytesrec_sum = 0;
 	   LONGLONG bytesrec_sum_old = 0;
@@ -816,6 +816,7 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
 {
     ASSERT(pTotal != NULL);
     ASSERT(pAvailable != NULL);
+    m_datalock.Lock();
 
     // The file is still downloading.
     if (m_llDownloadLength <= 0)
@@ -827,7 +828,9 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
         }
 
 		m_llBytesRequested = 5;
+        m_datalock.Unlock();
         WaitForSize(m_llFileLengthStartPoint, m_llBytesRequested);
+        m_datalock.Lock();
 		m_llBytesRequested = 0;
 
 		if (m_pEventSink)
@@ -844,6 +847,7 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
         *pAvailable = *pTotal;
     }
 
+    m_datalock.Unlock();
     //Log("Length called: return: total: %I64d avail: %I64d", *pTotal, *pAvailable);
 
     return S_OK;
