@@ -81,7 +81,7 @@ public:
 	void OnError(DWORD dwErr); 
 
 	HRESULT CHttpStream::Downloader_Start(TCHAR* szUrl, LONGLONG startpoint);
-	HRESULT CHttpStream::ServerPreCheck(char* url);
+	HRESULT CHttpStream::ServerPreCheck(const char* url);
 
 private:
 

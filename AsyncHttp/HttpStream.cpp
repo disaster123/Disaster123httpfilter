@@ -421,7 +421,7 @@ HRESULT CHttpStream::Downloader_Start(TCHAR* szUrl, LONGLONG startpoint)
 
 
 
-HRESULT CHttpStream::ServerPreCheck(char* url)
+HRESULT CHttpStream::ServerPreCheck(const char* url)
 {
       int Socket;
 	  char *szHost = NULL;
@@ -463,12 +463,26 @@ HRESULT CHttpStream::ServerPreCheck(char* url)
 
 	   LONGLONG tmpsize;
        int statuscode = 999;
-       GetHeaderHTTPHeaderData(Socket, &tmpsize, &statuscode);
+       string headers = GetHeaderHTTPHeaderData(Socket, &tmpsize, &statuscode);
 
        Log("ServerPreCheck: Filesize: %I64d Statuscode: %d", tmpsize, statuscode);
 
+       if (statuscode == 302) {
+          string newurl = GetLocationFromHeader(headers);
+
+	      closesocket(Socket);
+          SAFE_DELETE_ARRAY(szHost);
+	      SAFE_DELETE_ARRAY(szPath);
+
+          SAFE_DELETE_ARRAY(m_FileName);
+          m_FileName = new TCHAR[strlen(newurl.c_str())+1];
+          strcpy(m_FileName, newurl.c_str());
+
+          Log("\n\nServerPreCheck: REDIRECTED to %s!\n", newurl.c_str());
+          return ServerPreCheck(newurl.c_str());
+       }
        if (statuscode != 206) {
-            Log("\nServerPreCheck: SERVER NOT SUPPORTED!\n");
+            Log("\n\nServerPreCheck: SERVER NOT SUPPORTED!\n");
 	        closesocket(Socket);
             SAFE_DELETE_ARRAY(szHost);
 	        SAFE_DELETE_ARRAY(szPath);
@@ -479,7 +493,7 @@ HRESULT CHttpStream::ServerPreCheck(char* url)
        SAFE_DELETE_ARRAY(szHost);
 	   SAFE_DELETE_ARRAY(szPath);
 
-   Log("\nServerPreCheck: SERVER OK => SUPPORTED!\n");
+   Log("\n\nServerPreCheck: SERVER OK => SUPPORTED!\n");
 
    return S_OK;
 }

@@ -160,7 +160,7 @@ char* buildrequeststring(char* szHost, int szPort, char* szPath, LONGLONG startp
 	//int len = _snprintf(NULL, 999999, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%I64d-\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
 	//request = (char*) malloc (sizeof(char) * (len + 1));
 	
-    sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%I64d-\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
+    sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%I64d-\r\nUser-Agent: Mozilla/5.0 (Disaster123 MP HTTP Filter)\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
  
 	string request_logline = request;
     stringreplace(request_logline, "\r", "");
@@ -190,10 +190,11 @@ void GetLineFromSocket(int socket, string& line) {
     throw CreateSocketError(); 
 }
 
-void GetHeaderHTTPHeaderData(int Socket, LONGLONG* filesize, int* statuscode)
+string GetHeaderHTTPHeaderData(int Socket, LONGLONG* filesize, int* statuscode)
 {
        // Read Header and ignore
 	   string HeaderLine;
+       string headers;
 	   LONGLONG tmp1,tmp2;
 	   LONGLONG contlength = -1;
 	   LONGLONG contrange = -1;
@@ -204,6 +205,9 @@ void GetHeaderHTTPHeaderData(int Socket, LONGLONG* filesize, int* statuscode)
 	   for (int loop = 0; loop < 25; loop++) {
 		   try {
      	       GetLineFromSocket(Socket, HeaderLine);
+               headers += HeaderLine;
+               headers += "\n";
+
                if (loop == 0) {
                    // this MUST contain the statuscode
                    // HTTP/1.1 206 Partial Content
@@ -230,6 +234,8 @@ void GetHeaderHTTPHeaderData(int Socket, LONGLONG* filesize, int* statuscode)
 	   }
 	   // Loop was running too long but assign values
 	   *filesize = max(contrange, contlength);
+
+   return headers;
 }
 
 void send_to_socket(int socket, const char* const buf, const int size)
@@ -244,4 +250,48 @@ void send_to_socket(int socket, const char* const buf, const int size)
         }
         bytesSent += result;
     } while(bytesSent < size);
+}
+
+HRESULT GetValueFromHeader(const char* head, const char* key, string& value)
+{
+    string::size_type pos = 0;
+    string::size_type opos = 0;
+    char* value_c = NULL;
+    string headers = head;
+    headers += "\n";
+    stringreplace(headers, "\r", "");
+    string searchkey = key;
+    searchkey += ": %s";
+    value = "";
+
+    while ( (pos = headers.find("\n", opos)) != string::npos ) {
+         string line = headers.substr(opos, pos-opos);
+         SAFE_DELETE_ARRAY(value_c);
+         value_c = (char*) malloc (sizeof(char) * strlen(line.c_str()) + 1);
+         // Log("GetValueFromHeader: %s", line.c_str());
+         if (sscanf(line.c_str(), searchkey.c_str(), value_c) == 1) {
+             value = value_c;
+             // Log("Found key: %s value: %s", searchkey.c_str(), value.c_str());
+             break;
+         }
+         opos = pos+1;
+    }
+    SAFE_DELETE_ARRAY(value_c);
+
+    if (value.length() == 0) {
+        return E_FAIL;
+    }
+
+    return S_OK;
+}
+
+string GetLocationFromHeader(string headers)
+{
+   string ret;
+
+   GetValueFromHeader(headers.c_str(), "Location", ret);
+
+   //Log("GetLocationFromHeader: got new Location: %s", ret.c_str());
+
+  return ret;
 }
