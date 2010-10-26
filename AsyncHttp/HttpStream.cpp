@@ -16,8 +16,8 @@
 #include <winsock2.h>
 
 #include <stdio.h>
-#include <streams.h>
 #include <string>
+#include <streams.h>
 #include <sstream>
 #include <fstream>
 #include <atlconv.h>
@@ -55,6 +55,7 @@ LONGLONG    m_llFileLength = 0;         // Current length of the temp file, in b
 LONGLONG	m_llDownloadLength = 0;
 LONGLONG	m_llFileLengthStartPoint = 0; // Start of Current length in bytes
 LONGLONG    m_llBytesRequested = 0;     // Size of most recent read request.
+BOOL        m_llSeekPos = TRUE;
 float m_lldownspeed;
 #pragma endregion
 
@@ -259,7 +260,7 @@ UINT CALLBACK DownloaderThread(void* param)
 		   break;
 	   }
 
-	   char *request = buildrequeststring(szHost, szPort, szPath, startpos);
+	   char *request = buildrequeststring(szHost, szPort, szPath, startpos, m_llSeekPos);
 
 	   try {
   	      send_to_socket(Socket, request, strlen(request));
@@ -448,7 +449,7 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
 		   return E_FAIL;
 	  }
 
-	   char *request = buildrequeststring(szHost, szPort, szPath, 0);
+	   char *request = buildrequeststring(szHost, szPort, szPath, 0, true);
 
 	   try {
   	      send_to_socket(Socket, request, strlen(request));
@@ -483,8 +484,15 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
           Log("\n\nServerPreCheck: REDIRECTED to %s!\n", newurl.c_str());
           return ServerPreCheck(newurl.c_str());
        }
-       if (statuscode != 206) {
-            Log("\n\nServerPreCheck: SERVER NOT SUPPORTED!\n");
+       else if (statuscode == 200) {
+            Log("\n\nServerPreCheck: SERVER DOES NOT SUPPORT SEEKING!\n");
+            m_llSeekPos = FALSE;
+       }
+       else if (statuscode == 206) {
+            m_llSeekPos = TRUE;
+       }
+       else {
+            Log("\n\nServerPreCheck: SERVER NOT SUPPORTED! Code: %d\n", statuscode);
 	        closesocket(Socket);
             SAFE_DELETE_ARRAY(szHost);
 	        SAFE_DELETE_ARRAY(szPath);
@@ -609,7 +617,9 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
 			if ((pos.QuadPart > (m_llFileLengthStartPoint+(m_lldownspeed*1024*1024*2))) || (llReadEnd > (m_llFileLengthStartPoint+m_llFileLength+(m_lldownspeed*1024*1024*5)))) {
 				Log("CHttpStream::StartRead: will not reach pos. within 2 seconds - speed: %.4Lf MB/s ", m_lldownspeed);
 			    m_datalock.Unlock();
-                add_to_downloadqueue(pos.QuadPart);
+                if (m_llSeekPos) {
+                   add_to_downloadqueue(pos.QuadPart);
+                }
 			} else {
 			    // out of range BUT will reach Limit in 2 sek.
          		m_datalock.Unlock();
@@ -617,7 +627,9 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
 		} else {
 		  // out of range BUT not in line so can't reach it
 		  m_datalock.Unlock();
-		  add_to_downloadqueue(pos.QuadPart);
+          if (m_llSeekPos) {
+		     add_to_downloadqueue(pos.QuadPart);
+          }
 		}
 
         bWait = TRUE;
@@ -756,7 +768,7 @@ HRESULT CHttpStream::EndRead(
     bResult = GetOverlappedResult(m_hFileRead, pOverlapped, pdwBytesRead, TRUE);
     m_datalock.Unlock();
 
-    Log("CHttpStream::EndRead: Read done Startpos: %I64d (Real: %I64d) Read up to: %I64d", pos.QuadPart, (m_llFileLengthStartPoint+pos.QuadPart), (pos.QuadPart+(LONGLONG)pdwBytesRead));
+    Log("CHttpStream::EndRead: Read done Startpos: %I64d (Real: %I64d) Read up to (don't trust this value - some splitters send strange buffers to us): %I64d", pos.QuadPart, (m_llFileLengthStartPoint+pos.QuadPart), (pos.QuadPart+(LONGLONG)pdwBytesRead));
 
     if (!bResult)
     {
@@ -805,13 +817,6 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
     ASSERT(pTotal != NULL);
     ASSERT(pAvailable != NULL);
 
-#ifndef AUTOLOCK_DEBUG
-    CAutoLock lock(&m_datalock);
-#endif
-#ifdef AUTOLOCK_DEBUG
-    CAutoLockDebug lock(&m_datalock, __LINE__, __FILE__,__FUNCTION__);
-#endif
-
     // The file is still downloading.
     if (m_llDownloadLength <= 0)
     {
@@ -831,16 +836,15 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
         }
     }
 
-    /*
-    if (strcmp(m_FileName, ".flv") > 0) {
+    if (!m_llSeekPos) {
         *pTotal = m_llDownloadLength;
-        *pAvailable = m_llFileLength + m_llFileLengthStartPoint;
-    } else {*/
+        *pAvailable = m_llFileLength;
+    } else {
         *pTotal = m_llDownloadLength;
         *pAvailable = *pTotal;
-//    }
+    }
 
-    Log("Length called: return: total: %I64d avail: %I64d", *pTotal, *pAvailable);
+    //Log("Length called: return: total: %I64d avail: %I64d", *pTotal, *pAvailable);
 
     return S_OK;
 }

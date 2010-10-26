@@ -152,16 +152,20 @@ int Initialize_connection(char* szHost, int szPort)
    return Socket;
 }
 
-char* buildrequeststring(char* szHost, int szPort, char* szPath, LONGLONG startpos)
+char* buildrequeststring(char* szHost, int szPort, char* szPath, LONGLONG startpos, BOOL m_llSeekPos)
 {
 	// this is bad also cause we need another allocation at the buttom but how to determine the size?
 	char request[2000];
 
 	//int len = _snprintf(NULL, 999999, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%I64d-\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
 	//request = (char*) malloc (sizeof(char) * (len + 1));
-	
-    sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%I64d-\r\nUser-Agent: Mozilla/5.0 (Disaster123 MP HTTP Filter)\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
- 
+
+    if (m_llSeekPos) {
+      sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%I64d-\r\nUser-Agent: Mozilla/5.0 (Disaster123 MP HTTP Filter)\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
+    } else {
+      sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nUser-Agent: Mozilla/5.0 (Disaster123 MP HTTP Filter)\r\nConnection: close\r\n\r\n", szPath, szHost, szPort);
+    }
+
 	string request_logline = request;
     stringreplace(request_logline, "\r", "");
     stringreplace(request_logline, "\n\n", "");
