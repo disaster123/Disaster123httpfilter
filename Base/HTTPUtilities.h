@@ -8,10 +8,10 @@ void stringreplace(string& str, string search, string replace)
     string::size_type pos = 0;
     while ( (pos = str.find(search, pos)) != string::npos ) {
         if (replace.length() == 0) {
-            str.erase( pos, search.size() );
+            str.erase( pos, search.length() );
             pos = pos - search.length() + 1;
         } else {
-            str.replace( pos, search.size(), replace );
+            str.replace( pos, search.length(), replace );
             pos = pos - search.length() + replace.length() + 1;
         }
     }
@@ -152,18 +152,18 @@ int Initialize_connection(char* szHost, int szPort)
    return Socket;
 }
 
-char* buildrequeststring(char* szHost, int szPort, char* szPath, LONGLONG startpos, BOOL m_llSeekPos)
+char* buildrequeststring(char* szHost, int szPort, char* szPath, LONGLONG startpos, BOOL m_llSeekPos, string& add_headers)
 {
 	// this is bad also cause we need another allocation at the buttom but how to determine the size?
-	char request[2000];
+	char request[2048];
 
 	//int len = _snprintf(NULL, 999999, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%I64d-\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
 	//request = (char*) malloc (sizeof(char) * (len + 1));
 
     if (m_llSeekPos) {
-      sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: bytes=%I64d-\r\nUser-Agent: Mozilla/5.0 (Disaster123 MP HTTP Filter)\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
+        sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: bytes=%I64d-\r\nUser-Agent: Mozilla/5.0 (Disaster123 MP HTTP Filter)\r\nConnection: close\r\n%s\r\n", szPath, szHost, szPort, startpos, add_headers.c_str());
     } else {
-      sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nUser-Agent: Mozilla/5.0 (Disaster123 MP HTTP Filter)\r\nConnection: close\r\n\r\n", szPath, szHost, szPort);
+        sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nUser-Agent: Mozilla/5.0 (Disaster123 MP HTTP Filter)\r\nConnection: close\r\n%s\r\n", szPath, szHost, szPort, add_headers.c_str());
     }
 
 	string request_logline = request;

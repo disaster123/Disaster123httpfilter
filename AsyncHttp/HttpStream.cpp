@@ -56,7 +56,8 @@ LONGLONG	m_llDownloadLength = 0;
 LONGLONG	m_llFileLengthStartPoint = 0; // Start of Current length in bytes
 LONGLONG    m_llBytesRequested = 0;     // Size of most recent read request.
 BOOL        m_llSeekPos = TRUE;
-float m_lldownspeed;
+float       m_lldownspeed;
+string      add_headers;
 #pragma endregion
 
 /*
@@ -259,7 +260,7 @@ UINT CALLBACK DownloaderThread(void* param)
 		   break;
 	   }
 
-	   char *request = buildrequeststring(szHost, szPort, szPath, startpos, m_llSeekPos);
+	   char *request = buildrequeststring(szHost, szPort, szPath, startpos, m_llSeekPos, add_headers);
 
 	   try {
   	      send_to_socket(Socket, request, strlen(request));
@@ -449,7 +450,7 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
 		   return E_FAIL;
 	  }
 
-	   char *request = buildrequeststring(szHost, szPort, szPath, 0, true);
+	   char *request = buildrequeststring(szHost, szPort, szPath, 0, true, add_headers);
 
 	   try {
   	      send_to_socket(Socket, request, strlen(request));
@@ -521,9 +522,22 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
     // new file new location new server reset downloadspeed
     // and copy filename to global filename variable
     m_lldownspeed = 0.05F; // assume 50kb/s as a start value
+    add_headers = "";
 
-	m_FileName = new TCHAR[strlen(lpszFileName)+1];
-	strcpy(m_FileName, lpszFileName);
+    string searcher = lpszFileName;
+    string::size_type pos = 0;
+    if ((pos = searcher.find(" || ", 0)) != string::npos) {
+        string url = searcher.substr(0, pos);
+        m_FileName = new TCHAR[strlen(url.c_str())+1];
+      	strcpy(m_FileName, url.c_str());
+
+        add_headers = searcher.substr(pos+4, searcher.length()-pos-4);
+        Log("CHttpStream::Initialize: Found request with additional headers. URL: %s Headers: %s", m_FileName, add_headers.c_str());
+        stringreplace(add_headers, "\\n", "\r\n");
+    } else {
+        m_FileName = new TCHAR[strlen(lpszFileName)+1];
+      	strcpy(m_FileName, lpszFileName);
+    }
 
 	m_szTempFile[0] = TEXT('0');
 

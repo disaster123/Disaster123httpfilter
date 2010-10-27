@@ -92,14 +92,12 @@ public:
         if (NULL == pmt) 
 		{
 			GUID subtype = MEDIASUBTYPE_NULL;
-
-			// Workaround to support AVI files in this sample.
 			TCHAR *szExtension = PathFindExtension(OLE2T(lpwszFileName));
 
 			if (szExtension && _tcscmp(szExtension, TEXT(".avi")) == 0)
 			{
 				subtype = MEDIASUBTYPE_Avi;
-                Log("subtype MEDIASUBTYPE_Avi");
+                Log("subtype MEDIASUBTYPE_Avi / avi");
 			}
 			else if (szExtension && _tcscmp(szExtension, TEXT(".divx")) == 0)
 			{
