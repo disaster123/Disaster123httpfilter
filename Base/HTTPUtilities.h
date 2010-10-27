@@ -161,7 +161,7 @@ char* buildrequeststring(char* szHost, int szPort, char* szPath, LONGLONG startp
 	//request = (char*) malloc (sizeof(char) * (len + 1));
 
     if (m_llSeekPos) {
-      sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%I64d-\r\nUser-Agent: Mozilla/5.0 (Disaster123 MP HTTP Filter)\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
+      sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: bytes=%I64d-\r\nUser-Agent: Mozilla/5.0 (Disaster123 MP HTTP Filter)\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
     } else {
       sprintf(request, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nUser-Agent: Mozilla/5.0 (Disaster123 MP HTTP Filter)\r\nConnection: close\r\n\r\n", szPath, szHost, szPort);
     }
@@ -212,10 +212,12 @@ void GetHTTPHeaders(int Socket, LONGLONG* filesize, int* statuscode, string& hea
                headers += "\n";
 
                if (loop == 0) {
+				   int tmp;
                    // this MUST contain the statuscode
                    // HTTP/1.1 206 Partial Content
                    Log("GetHeaderHTTPHeaderData: Statusline: %s", HeaderLine.c_str());
-                   if (sscanf(HeaderLine.c_str(), "HTTP/1.1 %d ", &*statuscode) != 1) {
+				   // some strange HTTP Servers return HTTP/1.0 even they run under 1.1
+                   if (sscanf(HeaderLine.c_str(), "HTTP/1.%d %d ", &tmp, &*statuscode) != 2) {
                      Log("GetHeaderHTTPHeaderData: Statusline was unknown");
                      break;
                    }

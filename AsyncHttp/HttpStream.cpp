@@ -458,6 +458,7 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
 		  SAFE_DELETE_ARRAY(szHost);
 		  SAFE_DELETE_ARRAY(szPath);
           SAFE_DELETE_ARRAY(request);
+
           Log("ServerPreCheck: Fehler beim senden des Requests %s!", ex);
 	      return E_FAIL;
 	   }
