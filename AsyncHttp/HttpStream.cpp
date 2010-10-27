@@ -62,7 +62,6 @@ float m_lldownspeed;
 /*
  This is the stuff the downloads thread needs and holds
 */
-#pragma region Downloader
 
 string DownloaderThread_GetDownloaderMsg()
 {
@@ -282,17 +281,9 @@ UINT CALLBACK DownloaderThread(void* param)
 	   SAFE_DELETE_ARRAY(szPath);
       } // end CAutoLock lock(m_CritSec);
 
-       // 20kb Buffer is fast enough but also slow enough to let
-	   // a recheck of the download queue happen
-	   // TODO:
-	   // what happens if we have REALLY fast network connection?
-	   // do we have to dynamically adjust the buffer?
-	   //char buffer[1024*32];
-	   //int buflen = sizeof(buffer);
- 	   char *buffer = (char *) malloc (1024*32);
-	   int buflen = strlen(buffer);
-	   BOOL sleepcalc = FALSE;
-	   int sleep = 0;
+	   char buffer[1024*128];
+	   unsigned int buflen = sizeof(buffer)/8; // use 16kb of the buffer as default
+	   BOOL buffcalc = FALSE;
 	   int bytesrec = 0;
 	   LONGLONG bytesrec_sum = 0;
 	   LONGLONG bytesrec_sum_old = 0;
@@ -320,20 +311,14 @@ UINT CALLBACK DownloaderThread(void* param)
 				 break;
 		       }
 
-			   if (sleep > 0) {
-				  Sleep(sleep);
-			   }
 		       DownloaderThread_WriteData(buffer, bytesrec);
 
                time_end = GetSystemTimeInMS();
-			   if (!sleepcalc && (time_end-time_start) > 500) {
-				   sleepcalc = TRUE;
-				   if (recv_calls > 250) {
-                       sleep = (int)((LONGLONG)(recv_calls/250) * 5);
-				       buffer = (char *) malloc (buflen*(int)(sleep/5));
-					   buflen = strlen(buffer);
-					   Log("DownloaderThread: in 500ms we were called: %I64d times - raising buffer to %d and setting sleep to: %d", recv_calls, buflen, sleep);
-				   }
+			   if (!buffcalc && (time_end-time_start) > 500) {
+				   buffcalc = TRUE;
+                   int i = (int)recv_calls/25;
+			       buflen = max(min(sizeof(buffer), i*buflen), buflen);
+				   Log("DownloaderThread: in 500ms we were called: %I64d times - raising buffer to %d", recv_calls, buflen);
 			   }
                // print every 3s
                if ((time_end-time_start) > 3000) {
@@ -347,8 +332,6 @@ UINT CALLBACK DownloaderThread(void* param)
 		   }
 
 	   } while (bytesrec > 0 && m_DownloaderShouldRun);
-	   // this doesn't work i've no idea why
-	   //SAFE_DELETE_ARRAY(buffer);
 
        if ((m_llFileLength+m_llFileLengthStartPoint) == m_llDownloadLength) {
 		   Log("DownloaderThread: Download finshed reached end of file! - startpos: %I64d downloaded: %I64d Bytes Remote file size: %I64d", startpos, bytesrec_sum, m_llDownloadLength);
@@ -373,8 +356,6 @@ UINT CALLBACK DownloaderThread(void* param)
   Log("DownloaderThread: finished");
   ExitThread(0);
 }
-
-#pragma endregion
 
 /*
  This is the stuff the main real class holds (CHTTPStream) thread needs and holds
