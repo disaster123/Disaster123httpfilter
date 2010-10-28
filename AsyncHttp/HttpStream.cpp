@@ -534,14 +534,17 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
 
     string searcher = lpszFileName;
     string::size_type pos = 0;
-    if ((pos = searcher.find(" || ", 0)) != string::npos) {
+    if ((pos = searcher.find("&&&&", 0)) != string::npos) {
         string url = searcher.substr(0, pos);
         m_FileName = new TCHAR[strlen(url.c_str())+1];
       	strcpy(m_FileName, url.c_str());
 
         add_headers = searcher.substr(pos+4, searcher.length()-pos-4);
+		UrlDecode(add_headers);
         Log("CHttpStream::Initialize: Found request with additional headers. URL: %s Headers: %s", m_FileName, add_headers.c_str());
-        stringreplace(add_headers, "\\n", "\r\n");
+        stringreplace(add_headers, "\r", "");
+        stringreplace(add_headers, "\\n", "\n");
+        stringreplace(add_headers, "\n", "\r\n");
     } else {
         m_FileName = new TCHAR[strlen(lpszFileName)+1];
       	strcpy(m_FileName, lpszFileName);

@@ -17,6 +17,25 @@ void stringreplace(string& str, string search, string replace)
     }
 }
 
+char CharFromHex (string a)
+{
+	istringstream Blat (a);
+	int c;
+	Blat >> hex >> c;
+	return char (c);
+}
+
+void UrlDecode( string& Text )
+{
+	string::size_type Pos;
+	string Hex;
+	while (string::npos != (Pos = Text.find('%')))
+	{
+		Hex = Text.substr(Pos + 1, 2);
+		Text.replace(Pos, 3, 1, CharFromHex(Hex));
+	}
+}
+
 double Round(double Zahl, int Stellen)
 {
     double v[] = { 1, 10, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8 };  // mgl. verlängern
