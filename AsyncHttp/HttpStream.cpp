@@ -649,30 +649,37 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
 		(llReadEnd > (m_llFileLengthStartPoint+m_llFileLength))
 		)
     {
+      // request is out of range let's check if we can reach it
+	  Log("CHttpStream::StartRead: Request out of range - wanted start: %I64d end: %I64d min avail: %I64d max avail: %I64d", pos.QuadPart, llReadEnd, m_llFileLengthStartPoint, (m_llFileLengthStartPoint+m_llFileLength));
 
-		Log("CHttpStream::StartRead: Request out of range - wanted start: %I64d end: %I64d min avail: %I64d max avail: %I64d", pos.QuadPart, llReadEnd, m_llFileLengthStartPoint, (m_llFileLengthStartPoint+m_llFileLength));
-		// check if we'll reach the barrier within a few seconds
-		if ((pos.QuadPart > m_llFileLengthStartPoint) || (llReadEnd > (m_llFileLengthStartPoint+m_llFileLength))) {
-			if ((pos.QuadPart > (m_llFileLengthStartPoint+(m_lldownspeed*1024*1024*2))) || (llReadEnd > (m_llFileLengthStartPoint+m_llFileLength+(m_lldownspeed*1024*1024*5)))) {
-				Log("CHttpStream::StartRead: will not reach pos. within 2 seconds - speed: %.4Lf MB/s ", m_lldownspeed);
-			    m_datalock.Unlock();
-                if (m_llSeekPos) {
-                   add_to_downloadqueue(pos.QuadPart);
-                }
-			} else {
-			    // out of range BUT will reach Limit in 2 sek.
-         		m_datalock.Unlock();
-			}
-		} else {
-		  // out of range BUT not in line so can't reach it
+	  // check if we can reach the barrier at all
+	  if ((pos.QuadPart >= m_llFileLengthStartPoint) && (llReadEnd > (m_llFileLengthStartPoint+m_llFileLength)))
+      {
+        // check if we'll reach the pos. within X sec.
+        int reachin = 5;
+		if ( llReadEnd > (m_llFileLengthStartPoint+m_llFileLength+(m_lldownspeed*1024*1024*reachin)) ) {
+		  Log("CHttpStream::StartRead: will not reach pos. within %d seconds - speed: %.4Lf MB/s ", reachin, m_lldownspeed);
 		  m_datalock.Unlock();
           if (m_llSeekPos) {
-		     add_to_downloadqueue(pos.QuadPart);
+            add_to_downloadqueue(pos.QuadPart);
           }
-		}
+        }
+        else
+        { // out of range BUT will reach Limit in X sek.
+      	   m_datalock.Unlock();
+        }
+      } else {
+		// out of range AND not in line so can't reach it
+		m_datalock.Unlock();
+        if (m_llSeekPos) {
+		   add_to_downloadqueue(pos.QuadPart);
+        }
+      }
 
-        bWait = TRUE;
+      bWait = TRUE;
+
 	} else {
+        // request is OK Data is already there
 		m_datalock.Unlock();
 	}
 
