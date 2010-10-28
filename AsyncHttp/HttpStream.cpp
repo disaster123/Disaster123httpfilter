@@ -691,14 +691,11 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
             m_pEventSink->Notify(EC_BUFFERING_DATA, TRUE, 0);
         }
 
-        m_llBytesRequested = llReadEnd;
-
 		Log("CHttpStream::StartRead: wait for size/pos: %I64d", m_llBytesRequested);
+        m_llBytesRequested = llReadEnd;
         WaitForSize(pos.QuadPart, m_llBytesRequested);
 		m_llBytesRequested = 0;
-
-     	Log("CHttpStream::StartRead: Wait DONE Startpos requested: %I64d Endpos requested: %I64d, AvailableStart = %I64d, AvailableEnd = %I64d",
-		pos.QuadPart, llReadEnd, m_llFileLengthStartPoint, (m_llFileLengthStartPoint+m_llFileLength));
+     	Log("CHttpStream::StartRead: Wait DONE Startpos requested: %I64d Endpos requested: %I64d, AvailableStart = %I64d, AvailableEnd = %I64d", pos.QuadPart, llReadEnd, m_llFileLengthStartPoint, (m_llFileLengthStartPoint+m_llFileLength));
 
 		if (m_pEventSink)
         {
