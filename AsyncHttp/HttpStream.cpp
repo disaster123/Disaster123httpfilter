@@ -44,6 +44,7 @@ extern void StopLogger();
 static CCritSec m_datalock;
 static CCritSec m_CritSec;
 static CCritSec g_CritSec;
+static CCritSec m_LengthLock;
 
 std::queue<std::string> m_DownloaderQueue;
 TCHAR		m_szTempFile[MAX_PATH]; // Name of the temp file
@@ -361,8 +362,6 @@ UINT CALLBACK DownloaderThread(void* param)
 /*
  This is the stuff the main real class holds (CHTTPStream) thread needs and holds
 */
-#pragma region CHTTPStream
-
 CHttpStream::~CHttpStream()
 {
 	Log("~CHttpStream() called");
@@ -465,12 +464,22 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
 	   }
        SAFE_DELETE_ARRAY(request);
 
-	   LONGLONG tmpsize;
+	   LONGLONG dsize = -1;
        int statuscode = 999;
        string headers;
-       GetHTTPHeaders(Socket, &tmpsize, &statuscode, headers);
+       GetHTTPHeaders(Socket, &dsize, &statuscode, headers);
 
-       Log("ServerPreCheck: Filesize: %I64d Statuscode: %d", tmpsize, statuscode);
+       Log("ServerPreCheck: Filesize: %I64d Statuscode: %d", dsize, statuscode);
+
+	   if (statuscode != 302 && dsize <= 0) {
+	      closesocket(Socket);
+          SAFE_DELETE_ARRAY(szHost);
+		  SAFE_DELETE_ARRAY(szPath);
+
+          Log("Server reported illegal Filesize of 0 - we cannot download 0 bytes!");
+
+		  return E_FAIL;
+	   }
 
        if (statuscode == 302) {
           string newurl = GetLocationFromHeader(headers);
@@ -499,7 +508,7 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
             SAFE_DELETE_ARRAY(szHost);
 	        SAFE_DELETE_ARRAY(szPath);
           return E_FAIL;
-       }
+	   }
 
 	   closesocket(Socket);
        SAFE_DELETE_ARRAY(szHost);
@@ -513,7 +522,7 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
 HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName) 
 {
     HRESULT hr;
-    Log("(HttpStream) CHttpStream::Initialize File: %s", lpszFileName);
+    Log("CHttpStream::Initialize File: %s", lpszFileName);
     if (initWSA() != 0) {
         Log("CHttpStream::Initialize: Couldn't init WSA");
         return E_FAIL;
@@ -541,11 +550,17 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
 
 	m_szTempFile[0] = TEXT('0');
 
+	LONGLONG runtime = GetSystemTimeInMS();
 	hr = ServerPreCheck(m_FileName);
+	runtime = GetSystemTimeInMS()-runtime;
     if (FAILED(hr))
     {
         return hr;
     }
+	if (runtime > 1500) {
+		Log("CHttpStream::Initialize: Remote Server is too slow to render anything! Connect Time: %I64d", runtime);
+		return E_FAIL;
+	}
 
     hr = Downloader_Start(m_FileName, 0);
     if (FAILED(hr))
@@ -572,12 +587,21 @@ HRESULT CHttpStream::add_to_downloadqueue(LONGLONG startpos)
 void CHttpStream::WaitForSize(LONGLONG start, LONGLONG end) {
 
     // wait max. ~20s
-    for (int i = 0; i < 2000; i++) {
-        if (m_llFileLengthStartPoint <= start && ((m_llFileLengthStartPoint+m_llFileLength) >= end)) {
+	int i = 0;
+    for (i = 0; i < 2000; i++) {
+        if ((m_llFileLengthStartPoint <= start) && ((m_llFileLengthStartPoint+m_llFileLength) >= end)) {
             break;
         }
         Sleep(10);
     }
+	if (i >= 2000) {
+		Log("CHttpStream::WaitForSize: Timed OUT! (%I64d !<= %I64d) && (%I64d !>= %I64d)", m_llFileLengthStartPoint, start, (m_llFileLengthStartPoint+m_llFileLength), end);
+	}
+#ifdef _DEBUG
+	else {
+        Log("CHttpStream::WaitForSize: OK! (%I64d <= %I64d) && (%I64d >= %I64d)", m_llFileLengthStartPoint, start, (m_llFileLengthStartPoint+m_llFileLength), end);
+	}
+#endif
 }
 
 HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LPOVERLAPPED pOverlapped,LPBOOL pbPending, LPDWORD pdwBytesRead)
@@ -827,6 +851,12 @@ HRESULT CHttpStream::Cancel()
 
 HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
 {
+#ifndef AUTOLOCK_DEBUG
+	CAutoLock lock(&m_LengthLock);
+#else
+    CAutoLockDebug lock(&m_LengthLock, __LINE__, __FILE__,__FUNCTION__);
+#endif
+
     ASSERT(pTotal != NULL);
     ASSERT(pAvailable != NULL);
     m_datalock.Lock();
@@ -840,7 +870,7 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
             m_pEventSink->Notify(EC_BUFFERING_DATA, TRUE, 0);
         }
 
-		m_llBytesRequested = 5;
+		m_llBytesRequested = 5+m_llFileLengthStartPoint; // at least 5 bytes
         m_datalock.Unlock();
         WaitForSize(m_llFileLengthStartPoint, m_llBytesRequested);
         m_datalock.Lock();
@@ -865,5 +895,3 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
 
     return S_OK;
 }
-
-#pragma endregion

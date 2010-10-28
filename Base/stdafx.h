@@ -1,6 +1,6 @@
 #ifdef _DEBUG
-//#define AUTOLOCK_DEBUG
-//#define MANLOCK_DEBUG
+#define AUTOLOCK_DEBUG
+#define MANLOCK_DEBUG
 // this needs to be done very early in all files to make memory debugging possible
 #define _CRTDBG_MAP_ALLOC
 #include <stdlib.h>
