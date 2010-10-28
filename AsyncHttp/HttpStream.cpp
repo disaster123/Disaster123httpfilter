@@ -401,7 +401,6 @@ void FireDownloaderThread()
   m_hDownloader = (HANDLE)_beginthreadex(NULL, 0, DownloaderThread, 0, 0, &id);
 }
 
-
 HRESULT CHttpStream::Downloader_Start(TCHAR* szUrl, LONGLONG startpoint) 
 {
   // char msg[strlen(szUrl)+strlen(_i64toa(startpoint))+4+1];
@@ -419,8 +418,6 @@ HRESULT CHttpStream::Downloader_Start(TCHAR* szUrl, LONGLONG startpoint)
 
   return S_OK;
 };
-
-
 
 HRESULT CHttpStream::ServerPreCheck(const char* url)
 {
@@ -590,7 +587,7 @@ void CHttpStream::WaitForSize(LONGLONG start, LONGLONG end) {
 
     // wait max. ~20s
 	int i = 0;
-    for (i = 0; i < 2000; i++) {
+    for (i = 0; i <= 2000; i++) {
         if ((m_llFileLengthStartPoint <= start) && ((m_llFileLengthStartPoint+m_llFileLength) >= end)) {
             break;
         }

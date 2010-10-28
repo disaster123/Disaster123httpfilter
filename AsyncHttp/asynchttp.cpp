@@ -36,6 +36,5 @@ CUnknown * WINAPI CAsyncFilterHttp::CreateInstance(LPUNKNOWN pUnk, HRESULT *phr)
 
     //  DLLEntry does the right thing with the return code and
     //  the returned value on failure
-
 	return new CAsyncFilterHttp(pUnk, phr);
 }

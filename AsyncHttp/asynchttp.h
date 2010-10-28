@@ -31,7 +31,7 @@ DEFINE_GUID(CLSID_AsyncHttp,
 //  CAsyncReader class in conjunction with the CHttpStream class.
 //************************************************************************
 
-class CAsyncFilterHttp : public CAsyncReader, public IFileSourceFilter
+class CAsyncFilterHttp : public CAsyncReader, public IFileSourceFilter//, public IAMOpenProgress
 {
 public:
     CAsyncFilterHttp(LPUNKNOWN pUnk, HRESULT *phr) :
@@ -183,7 +183,48 @@ public:
 
         return NOERROR;
     }
+/*
+    STDMETHODIMP QueryProgress(LONGLONG* pllTotal, LONGLONG* pllCurrent)
+    {
+      Log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA QueryProgress called!!!");
+      Sleep(500);
+      LONGLONG llLength = 0, llAvailable = 0;
+      Log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA QueryProgress called!!!");
+      Sleep(500);
+      *pllTotal = llLength;
+      *pllCurrent = llAvailable;
 
+      Log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA QueryProgress called!!!");
+      Sleep(500);
+      if (!m_pFileName) {
+          return S_OK;
+      }
+
+      Log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA QueryProgress called!!!");
+      Sleep(500);
+      HRESULT hr = m_FileStream.Length(&llLength, &llAvailable);
+      Log("QueryProgress m_FileStream.Length done!!!");
+      Sleep(500);
+      
+      if (SUCCEEDED(hr)) {
+          *pllTotal = llLength;
+          *pllCurrent = llAvailable;
+          hr = S_OK;
+      }
+        else
+      {
+          hr = E_FAIL;
+      }
+
+	  return hr;
+    }
+
+    STDMETHODIMP AbortOperation()
+    {
+       return m_FileStream.Cancel();
+	   //return E_NOTIMPL;
+    }
+*/
 private:
     LPWSTR      m_pFileName;
     LONGLONG    m_llSize;

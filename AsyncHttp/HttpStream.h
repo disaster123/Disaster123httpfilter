@@ -32,7 +32,7 @@ using namespace std;
 //***********************************************************************/
 
 
-class CHttpStream : public CAsyncStream //, public HttpRequestCB
+class CHttpStream : public CAsyncStream
 {
 public:
 
@@ -80,8 +80,8 @@ public:
     void OnEndOfStream();
 	void OnError(DWORD dwErr); 
 
-	HRESULT CHttpStream::Downloader_Start(TCHAR* szUrl, LONGLONG startpoint);
-	HRESULT CHttpStream::ServerPreCheck(const char* url);
+	HRESULT Downloader_Start(TCHAR* szUrl, LONGLONG startpoint);
+	HRESULT ServerPreCheck(const char* url);
 
 private:
 
