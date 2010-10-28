@@ -688,7 +688,7 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
             m_pEventSink->Notify(EC_BUFFERING_DATA, TRUE, 0);
         }
 
-		Log("CHttpStream::StartRead: wait for size/pos: %I64d", m_llBytesRequested);
+		Log("CHttpStream::StartRead: wait for size/pos: %I64d", llReadEnd);
         m_llBytesRequested = llReadEnd;
         WaitForSize(pos.QuadPart, m_llBytesRequested);
 		m_llBytesRequested = 0;
