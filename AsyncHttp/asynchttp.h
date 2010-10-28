@@ -96,21 +96,21 @@ public:
 
             if ( (szExtension && _tcscmp(szExtension, TEXT(".avi")) == 0) ||
                  (_tcsstr(szExtension, ".avi?") > 0) ||
-                 (_tcsstr(szExtension, ".avi || ") > 0) )
+                 (_tcsstr(szExtension, ".avi&&&&") > 0) )
 			{
 				subtype = MEDIASUBTYPE_Avi;
                 Log("subtype MEDIASUBTYPE_Avi / avi");
 			}
 			else if ( (szExtension && _tcscmp(szExtension, TEXT(".divx")) == 0) ||
                  (_tcsstr(szExtension, ".divx?") > 0) ||
-                 (_tcsstr(szExtension, ".divx || ") > 0) )
+                 (_tcsstr(szExtension, ".divx&&&&") > 0) )
 			{
 				subtype = MEDIASUBTYPE_Avi;
                 Log("subtype MEDIASUBTYPE_Avi / divx");
 			}
 			else if ( (szExtension && _tcscmp(szExtension, TEXT(".mkv")) == 0) ||
                  (_tcsstr(szExtension, ".mkv?") > 0) ||
-                 (_tcsstr(szExtension, ".mkv || ") > 0) )
+                 (_tcsstr(szExtension, ".mkv&&&&") > 0) )
 			{
 				subtype = MEDIASUBTYPE_H264;
                 Log("subtype MEDIASUBTYPE_H264 / mkv");
