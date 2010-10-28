@@ -44,7 +44,6 @@ extern void StopLogger();
 static CCritSec m_datalock;
 static CCritSec m_CritSec;
 static CCritSec g_CritSec;
-static CCritSec m_LengthLock;
 
 std::queue<std::string> m_DownloaderQueue;
 TCHAR		m_szTempFile[MAX_PATH]; // Name of the temp file
@@ -851,12 +850,6 @@ HRESULT CHttpStream::Cancel()
 
 HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
 {
-#ifndef AUTOLOCK_DEBUG
-	CAutoLock lock(&m_LengthLock);
-#else
-    CAutoLockDebug lock(&m_LengthLock, __LINE__, __FILE__,__FUNCTION__);
-#endif
-
     ASSERT(pTotal != NULL);
     ASSERT(pAvailable != NULL);
     m_datalock.Lock();
