@@ -336,6 +336,8 @@ UINT CALLBACK DownloaderThread(void* param)
 		       }
 
 		       DownloaderThread_WriteData(startpos+bytesrec_sum-bytesrec, buffer, bytesrec);
+			   // TODO
+			   // check here IF the next Write / dataget will oberlapp with Data which is already written?
 
                time_end = GetSystemTimeInMS();
 			   if (!buffcalc && (time_end-time_start) > 500) {
@@ -711,7 +713,7 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
 	   return HRESULT_FROM_WIN32(38);
     }
 
-	// 
+	// is the requested range available?
     if (!israngeavail(pos.QuadPart,llLength))
     {
       // request is out of range let's check if we can reach it
@@ -756,7 +758,7 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
             m_pEventSink->Notify(EC_BUFFERING_DATA, TRUE, 0);
         }
 
-		Log("CHttpStream::StartRead: wait for start: %I64d end: %I64d", pos.QuadPart, llReadEnd);
+		Log("CHttpStream::StartRead: wait for start: %I64d end: %I64d - reachlimit: %s", pos.QuadPart, llReadEnd, (reachlimit) ? "true" : "false");
         m_llBytesRequested = llReadEnd;
         WaitForSize(pos.QuadPart, llReadEnd);
 		m_llBytesRequested = 0;
