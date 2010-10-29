@@ -31,7 +31,7 @@ DEFINE_GUID(CLSID_AsyncHttp,
 //  CAsyncReader class in conjunction with the CHttpStream class.
 //************************************************************************
 
-class CAsyncFilterHttp : public CAsyncReader, public IFileSourceFilter//, public IAMOpenProgress
+class CAsyncFilterHttp : public CAsyncReader, public IFileSourceFilter, public IAMOpenProgress
 {
 public:
     CAsyncFilterHttp(LPUNKNOWN pUnk, HRESULT *phr) :
@@ -183,8 +183,8 @@ public:
 
         return NOERROR;
     }
-/*
-    STDMETHODIMP QueryProgress(LONGLONG* pllTotal, LONGLONG* pllCurrent)
+
+	STDMETHODIMP QueryProgress(LONGLONG* pllTotal, LONGLONG* pllCurrent)
     {
       Log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA QueryProgress called!!!");
       Sleep(500);
@@ -221,10 +221,11 @@ public:
 
     STDMETHODIMP AbortOperation()
     {
+	   Log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA AbortOperation called");
        return m_FileStream.Cancel();
 	   //return E_NOTIMPL;
     }
-*/
+
 private:
     LPWSTR      m_pFileName;
     LONGLONG    m_llSize;

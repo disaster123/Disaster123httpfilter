@@ -421,10 +421,10 @@ HRESULT CHttpStream::Downloader_Start(TCHAR* szUrl, LONGLONG startpoint)
 
 HRESULT CHttpStream::ServerPreCheck(const char* url)
 {
-      int Socket;
+      int   Socket;
 	  char *szHost = NULL;
       char *szPath = NULL;
-	  int szPort = NULL;
+	  int   szPort = NULL;
 	  
 	  Log("ServerPreCheck: Start for URL: %s", url);
 
@@ -539,6 +539,7 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
         add_headers = searcher.substr(pos+4, searcher.length()-pos-4);
 		UrlDecode(add_headers);
         Log("CHttpStream::Initialize: Found request with additional headers. URL: %s Headers: %s", m_FileName, add_headers.c_str());
+        stringreplace(add_headers, "\\r", "\r");
         stringreplace(add_headers, "\r", "");
         stringreplace(add_headers, "\\n", "\n");
         stringreplace(add_headers, "\n", "\r\n");
@@ -556,7 +557,7 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
     {
         return hr;
     }
-	if (runtime > 1500) {
+	if (runtime > 4000) {
 		Log("CHttpStream::Initialize: Remote Server is too slow to render anything! Connect Time: %I64d", runtime);
 		return E_FAIL;
 	}
@@ -627,16 +628,16 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
     Log("CHttpStream::StartRead: m_datalock.Lock done - UNLOCK WILL FOLLOW");
 #endif
 
-    pos.HighPart = pOverlapped->OffsetHigh;
     pos.LowPart = pOverlapped->Offset;
+    pos.HighPart = pOverlapped->OffsetHigh;
 
 	LONGLONG llReadEnd = pos.QuadPart + dwBytesToRead;
 
     Log("CHttpStream::StartRead: Startpos requested: %I64d Endpos requested: %I64d, AvailableStart = %I64d, AvailableEnd = %I64d, Diff Endpos: %I64d",
  	  	 pos.QuadPart, llReadEnd, m_llFileLengthStartPoint, (m_llFileLengthStartPoint+m_llFileLength), ((m_llFileLengthStartPoint+m_llFileLength)-llReadEnd));
 
-    if ((m_llDownloadLength > 0) && (pos.QuadPart > m_llDownloadLength)) {
-	   Log("CHttpStream::StartRead: THIS SHOULD NEVER HAPPEN! requested startpos out of max. range - return end of file");
+	if ((m_llDownloadLength > 0) && (pos.QuadPart > m_llDownloadLength || llReadEnd > m_llDownloadLength)) {
+	   Log("CHttpStream::StartRead: THIS SHOULD NEVER HAPPEN! requested start or endpos out of max. range - return end of file");
 	   m_datalock.Unlock();
 	   return HRESULT_FROM_WIN32(38);
     }
