@@ -284,8 +284,13 @@ DWORD DownloaderThread_WriteData(LONGLONG startpos, char *buffer, int buffersize
 	iPos.QuadPart = startpos;
 	DWORD dr = SetFilePointer(m_hFileWrite, iPos.LowPart, &iPos.HighPart, FILE_BEGIN);
 	if (dr == INVALID_SET_FILE_POINTER) {
-		Log("DownloaderThread_WriteData: INVALID_SET_FILE_POINTER");
-		return 0;
+		DWORD err = GetLastError();
+		LPTSTR Error = 0;
+		FormatMessage( FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM, NULL, err, 0, (LPTSTR)&Error, 0, NULL);
+        Log("DownloaderThread_WriteData: INVALID_SET_FILE_POINTER Pos: %I64d Startpos: %I64d Error: %s", iPos.QuadPart, startpos, Error);
+        SAFE_DELETE(Error);
+
+        return HRESULT_FROM_WIN32(err);
 	}
 
     // Write the data to the temp file.
@@ -295,7 +300,7 @@ DWORD DownloaderThread_WriteData(LONGLONG startpos, char *buffer, int buffersize
 		DWORD err = GetLastError();
 		return err;
     }
-    m_llDownloadPos += buffersize;
+    m_llDownloadPos += cbWritten;
 	//Log("DownloaderThread_WriteData: Wrote from: %I64d to: %I64d Length: %u Buffer: %d downpos: %I64d", startpos, startpos+cbWritten, cbWritten, buffersize, m_llDownloadPos);
 
 	return 0;
@@ -653,12 +658,21 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
 	   Log("ServerPreCheck: CreateTempFile failed!");
 	   return E_FAIL;
    }
+
    // Request the start and END
+   runtime = GetSystemTimeInMS();
    add_to_downloadqueue(0);
    WaitForSize(0, (256*1024));
    add_to_downloadqueue(dsize-(256*1024));
    WaitForSize(dsize-(256*1024), dsize);
-   Log("\nServerPreCheck: PREBUFFER of file done\n");
+   Log("\n\nServerPreCheck: PREBUFFER of file done\n");
+
+   runtime = GetSystemTimeInMS()-runtime;
+   // 512kb download
+   if (runtime > 15000) {
+	 Log("ServerPreCheck: Remote Server is too slow to render anything! Download of 500kb took: %I64d s", (LONGLONG)runtime/1000);
+	 return E_FAIL;
+   }
 
    return S_OK;
 }
@@ -701,6 +715,8 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
         return hr;
     }
 
+    /*
+    TODO: don't start here - real read request wlll tell us where
     LONGLONG realstartpos;
     // get real first downloadpos
     israngeavail_nextstart(0, m_llDownloadLength, &realstartpos);
@@ -709,6 +725,7 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
     {
         return hr;
     }
+    */
 
 	return S_OK;
 }
