@@ -89,13 +89,13 @@ BOOL israngeavail(LONGLONG start, LONGLONG length)
     int n = nbytes / sizeof(FILE_ALLOCATED_RANGE_BUFFER);
 	// should be only ONE Range
 	// Filestart ranges[i].FileOffset.QuadPart,
-#ifdef _DEBUG
-	if (n == 0) {
+/*
+    if (n == 0) {
 	  Log("israngeavail: Rangecount: %d Start: %I64d Length req: %I64d", n, start, length);
 	} else {
 	  Log("israngeavail: Rangecount: %d Start: %I64d Length req: %I64d avail length: %I64d", n, start, length, ranges[0].Length.QuadPart);
 	}
-#endif
+*/
 
 	if (n == 1 && ranges[0].Length.QuadPart >= length) {
        return TRUE;
@@ -296,7 +296,7 @@ DWORD DownloaderThread_WriteData(LONGLONG startpos, char *buffer, int buffersize
 		return err;
     }
     m_llDownloadPos += buffersize;
-	Log("DownloaderThread_WriteData: Wrote from: %I64d to: %I64d Length: %u Buffer: %d downpos: %I64d", startpos, startpos+cbWritten, cbWritten, buffersize, m_llDownloadPos);
+	//Log("DownloaderThread_WriteData: Wrote from: %I64d to: %I64d Length: %u Buffer: %d downpos: %I64d", startpos, startpos+cbWritten, cbWritten, buffersize, m_llDownloadPos);
 
 	return 0;
 }
@@ -329,14 +329,14 @@ UINT CALLBACK DownloaderThread(void* param)
 #endif
 
 	   // get message from the queue AND URL and POS from queuestring
-       DownloaderThread_geturlpos(&url, &startpos, DownloaderThread_GetDownloaderMsg());
-	   Log("DownloaderThread: URL: %s Startpos: %I64d", url, startpos);
+	   LONGLONG tmp_startpos;
+       DownloaderThread_geturlpos(&url, &tmp_startpos, DownloaderThread_GetDownloaderMsg());
+       // allign startpos to SPARSE_BLOCK_SIZE
+       startpos = (LONGLONG)(tmp_startpos/SPARSE_BLOCK_SIZE) * SPARSE_BLOCK_SIZE;
+       Log("DownloaderThread: URL: %s Startpos: %I64d - Aligned Startpos: %I64d", url, tmp_startpos, startpos);
 
        // reinit all variables for THIS download
        DownloaderThread_initvars(startpos);
-
-	   // create TEMP File
-       // CreateTempFile();
 
 	   // get Host, Path and Port from URL
        if (GetHostAndPath(url, &szHost, &szPath, &szPort) != 0)
@@ -374,13 +374,13 @@ UINT CALLBACK DownloaderThread(void* param)
 
        Log("DownloaderThread: Headers complete Downloadsize: %I64d", m_llDownloadLength);
 
-	   SAFE_DELETE_ARRAY(url);
 	   SAFE_DELETE_ARRAY(szHost);
 	   SAFE_DELETE_ARRAY(szPath);
       } // end CAutoLock lock(m_CritSec);
 
-	   char buffer[1024*128];
-	   unsigned int buflen = sizeof(buffer)/8; // use 16kb of the buffer as default
+	   //char buffer[1024*128];
+	   //unsigned int buflen = sizeof(buffer)/8; // use 16kb of the buffer as default
+	   char buffer[SPARSE_BLOCK_SIZE];
 	   BOOL buffcalc = FALSE;
 	   int bytesrec = 0;
 	   LONGLONG bytesrec_sum = 0;
@@ -388,25 +388,41 @@ UINT CALLBACK DownloaderThread(void* param)
 	   LONGLONG recv_calls = 0;
 	   LONGLONG time_start = GetSystemTimeInMS();
        LONGLONG time_end;
+       buffer[0] = '\0';
 	   do {
-		   bytesrec = recv(Socket, buffer, buflen, 0);
+           // use MSG_WAITALL so the buffer should be always complete / full
+		   bytesrec = recv(Socket, buffer, sizeof(buffer), MSG_WAITALL);
 		   recv_calls++;
 
            // Bytes received write them down
 		   if (bytesrec > 0) {
      		   bytesrec_sum += bytesrec;
 
+               if (bytesrec < SPARSE_BLOCK_SIZE) {
+                   if ( (m_llDownloadPos+bytesrec) == m_llDownloadLength )  {
+                       Log("DownloaderThread: got %d bytes instead of a full buffer of size %I64d - but this is OK it es END of file", bytesrec, (LONGLONG)SPARSE_BLOCK_SIZE);
+                   } else {
+                       Log("DownloaderThread: got %d bytes instead of a full buffer of size %I64d - restart download at pos %I64d", bytesrec, (LONGLONG)SPARSE_BLOCK_SIZE, m_llDownloadPos);
+				       char msg[500];
+                       sprintf_s(msg, sizeof(msg), "%s || %I64d", url, m_llDownloadPos);
+				       m_DownloaderQueue.push((string)msg);
+                   }
+               }
+
 			   // TODO
 			   // check here IF the next Write / dataget will oberlapp with Data which is already written?
 			   // startpos+bytesrec_sum-bytesrec
-			   if (m_DownloaderQueue.size() == 0 && israngeavail(0, m_llDownloadLength)) {
-				   Log("AAAAAAAAAAAAAAAAA Range is avail: Start: %I64d End: %I64d, DStart: %I64d DPos: %I64d", startpos+bytesrec_sum-bytesrec, startpos+bytesrec_sum-bytesrec+bytesrec, m_llDownloadStart, m_llDownloadPos);
-/*			       LONGLONG newstartpos;
-				   israngeavail_nextstart(startpos+bytesrec_sum-bytesrec, m_llDownloadLength, &newstartpos);
-				   Log("DownloaderThread: write range is already available Start: %I64d End: %I64d New startpos: %I64d", startpos+bytesrec_sum-bytesrec, startpos+bytesrec_sum-bytesrec+bytesrec, newstartpos);
+               if (m_DownloaderQueue.size() == 0 && israngeavail(m_llDownloadPos, bytesrec)) {
+			       LONGLONG newstartpos;
+				   israngeavail_nextstart(m_llDownloadPos, m_llDownloadLength, &newstartpos);
+                   if (newstartpos >= m_llDownloadLength) {
+                       Log("DownloaderThread: newstartpos >= m_llDownloadLength reached - cancel furthor download");
+                       break;
+                   }
+				   Log("DownloaderThread: write range is already available Start: %I64d End: %I64d New startpos: %I64d", m_llDownloadPos, m_llDownloadPos+bytesrec, newstartpos);
 				   char msg[500];
 				   sprintf_s(msg, sizeof(msg), "%s || %I64d", url, newstartpos);
-				   m_DownloaderQueue.push((string)msg);*/
+				   m_DownloaderQueue.push((string)msg);
 			   }
 
 		       if (m_DownloaderQueue.size() > 0) {
@@ -422,27 +438,30 @@ UINT CALLBACK DownloaderThread(void* param)
 				 break;
 		       }
 
-	           DownloaderThread_WriteData(startpos+bytesrec_sum-bytesrec, buffer, bytesrec);
+               DownloaderThread_WriteData(m_llDownloadPos, buffer, bytesrec);
 
                time_end = GetSystemTimeInMS();
-			   if (!buffcalc && (time_end-time_start) > 500) {
+/*
+               if (!buffcalc && (time_end-time_start) > 500) {
 				   buffcalc = TRUE;
                    int i = (int)recv_calls/25;
 			       buflen = max(min(sizeof(buffer), i*buflen), buflen);
 				   Log("DownloaderThread: in 500ms we were called: %I64d times - raising buffer to %d", recv_calls, buflen);
 			   }
+*/
                // print every 3s
                if ((time_end-time_start) > 3000) {
 			 	 LONGLONG bytesdiff = bytesrec_sum-bytesrec_sum_old;
                  float timediff = ((float)(time_end-time_start))/1000;
                  m_lldownspeed = (float)Round(((float)bytesdiff/1024/1024)/timediff, 4);
-				 Log("DownloaderThread: Downloaded %.2LfMB time: %.2Lf Speed: %.4Lf MB/s Recv: %I64d Last requested: %I64d", ((float)bytesrec_sum/1024/1024), timediff, m_lldownspeed, recv_calls, m_llBytesRequested);
+                 Log("DownloaderThread: Downloaded %.2LfMB Pos: %.4LfMB time: %.2Lf Speed: %.4Lf MB/s Recv: %I64d Last requested: %I64d", ((float)bytesrec_sum/1024/1024), ((float)m_llDownloadPos/1024/1024), timediff, m_lldownspeed, recv_calls, m_llBytesRequested);
 				 time_start = GetSystemTimeInMS();
 				 bytesrec_sum_old = bytesrec_sum;
 			   }
 		   }
 
 	   } while (bytesrec > 0 && m_DownloaderShouldRun);
+	   SAFE_DELETE_ARRAY(url);
 
 	   if ((m_llDownloadStart+bytesrec_sum) == m_llDownloadLength) {
 		   Log("DownloaderThread: Download finshed reached end of file! - startpos: %I64d downloaded: %I64d Bytes Remote file size: %I64d", startpos, bytesrec_sum, m_llDownloadLength);
@@ -629,12 +648,10 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
    }
    // Request the start and END
    add_to_downloadqueue(0);
-   // STEFAN
-   Sleep(10000);
    WaitForSize(0, (256*1024));
    add_to_downloadqueue(dsize-(256*1024));
    WaitForSize(dsize-(256*1024), dsize);
-   Log("Prebuffer of File done");
+   Log("ServerPreCheck: Prebuffer of file done");
 
    return S_OK;
 }
@@ -718,16 +735,18 @@ void CHttpStream::WaitForSize(LONGLONG start, LONGLONG end)
 		if (israngeavail(start,length)) {
 			break;
 		}
-		Sleep(10);
+		Sleep(50);
     }
 	if (i >= 2000) {
 		Log("CHttpStream::WaitForSize: Timed OUT! Start: %I64d Length: %I64d", start, length);
 	}
+    /*
 #ifdef _DEBUG
 	else {
         Log("CHttpStream::WaitForSize: OK! Start: %I64d Length: %I64d", start, length);
 	}
 #endif
+*/
 }
 
 HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LPOVERLAPPED pOverlapped,LPBOOL pbPending, LPDWORD pdwBytesRead)
@@ -760,7 +779,7 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
 	LONGLONG llLength = dwBytesToRead;
 	LONGLONG llReadEnd = pos.QuadPart + llLength;
 
-    Log("CHttpStream::StartRead: Startpos requested: %I64d Endpos requested: %I64d", pos.QuadPart, llReadEnd);
+    //Log("CHttpStream::StartRead: Startpos requested: %I64d Endpos requested: %I64d", pos.QuadPart, llReadEnd);
 
 	if ((m_llDownloadLength > 0) && (pos.QuadPart > m_llDownloadLength || llReadEnd > m_llDownloadLength)) {
 	   Log("CHttpStream::StartRead: THIS SHOULD NEVER HAPPEN! requested start or endpos out of max. range - return end of file");
@@ -772,7 +791,7 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
     if (!israngeavail(pos.QuadPart,llLength))
     {
       // request is out of range let's check if we can reach it
-      Log("CHttpStream::StartRead: Request out of range - wanted start: %I64d end: %I64d min downstart: %I64d downpos: %I64d", pos.QuadPart, llReadEnd, m_llDownloadStart, m_llDownloadPos);
+      //Log("CHttpStream::StartRead: Request out of range - wanted start: %I64d end: %I64d min downstart: %I64d downpos: %I64d", pos.QuadPart, llReadEnd, m_llDownloadStart, m_llDownloadPos);
 
 	  // check if we can reach the barrier at all
 	  if ((pos.QuadPart >= m_llDownloadStart) && (llReadEnd > m_llDownloadPos))
@@ -813,11 +832,11 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
             m_pEventSink->Notify(EC_BUFFERING_DATA, TRUE, 0);
         }
 
-		Log("CHttpStream::StartRead: wait for start: %I64d end: %I64d", pos.QuadPart, llReadEnd);
+		// Log("CHttpStream::StartRead: wait for start: %I64d end: %I64d", pos.QuadPart, llReadEnd);
         m_llBytesRequested = llReadEnd;
         WaitForSize(pos.QuadPart, llReadEnd);
 		m_llBytesRequested = 0;
-     	Log("CHttpStream::StartRead: Wait DONE");
+     	// Log("CHttpStream::StartRead: wait for start: DONE");
 
 		if (m_pEventSink)
         {
@@ -925,7 +944,7 @@ HRESULT CHttpStream::EndRead(
     bResult = GetOverlappedResult(m_hFileRead, pOverlapped, pdwBytesRead, TRUE);
     m_datalock.Unlock();
 
-    Log("CHttpStream::EndRead: Read done Startpos: %I64d Read up to (don't trust this value - some splitters send strange buffers to us): %I64d", pos.QuadPart, (pos.QuadPart+(LONGLONG)*pdwBytesRead));
+    //Log("CHttpStream::EndRead: Read done Startpos: %I64d Read up to (don't trust this value - some splitters send strange buffers to us): %I64d", pos.QuadPart, (pos.QuadPart+(LONGLONG)*pdwBytesRead));
 
     if (!bResult)
     {
