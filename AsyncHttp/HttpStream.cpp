@@ -65,6 +65,79 @@ string      add_headers;
  This is the stuff the downloads thread needs and holds
 */
 
+BOOL israngeavail(LONGLONG start, LONGLONG length) 
+{
+#ifndef AUTOLOCK_DEBUG
+    CAutoLock lock(&m_datalock);
+#endif
+#ifdef AUTOLOCK_DEBUG
+	CAutoLockDebug lock(&m_datalock, __LINE__, __FILE__,__FUNCTION__);
+#endif
+
+	FILE_ALLOCATED_RANGE_BUFFER queryrange;
+    FILE_ALLOCATED_RANGE_BUFFER ranges[1024];
+	DWORD nbytes;
+
+	queryrange.FileOffset.QuadPart = start;
+    queryrange.Length.QuadPart = length;
+
+	if (m_hFileRead == INVALID_HANDLE_VALUE) {
+	  return FALSE;
+	}
+
+	DeviceIoControl(m_hFileRead, FSCTL_QUERY_ALLOCATED_RANGES, &queryrange, sizeof(queryrange), ranges, sizeof(ranges), &nbytes, NULL);
+    int n = nbytes / sizeof(FILE_ALLOCATED_RANGE_BUFFER);
+	// should be only ONE Range
+	// Filestart ranges[i].FileOffset.QuadPart,
+#ifdef _DEBUG
+	if (n == 0) {
+	  Log("israngeavail: Rangecount: %d Start: %I64d Length req: %I64d", n, start, length);
+	} else {
+	  Log("israngeavail: Rangecount: %d Start: %I64d Length req: %I64d avail length: %I64d", n, start, length, ranges[0].Length.QuadPart);
+	}
+#endif
+
+	if (n == 1 && ranges[0].Length.QuadPart >= length) {
+       return TRUE;
+	}
+
+	return FALSE;
+}
+
+void israngeavail_nextstart(LONGLONG start, LONGLONG end, LONGLONG* newstartpos) 
+{
+#ifndef AUTOLOCK_DEBUG
+    CAutoLock lock(&m_datalock);
+#endif
+#ifdef AUTOLOCK_DEBUG
+	CAutoLockDebug lock(&m_datalock, __LINE__, __FILE__,__FUNCTION__);
+#endif
+
+	FILE_ALLOCATED_RANGE_BUFFER queryrange;
+    FILE_ALLOCATED_RANGE_BUFFER ranges[1024];
+	DWORD nbytes;
+	LONGLONG length = end-start;
+
+	queryrange.FileOffset.QuadPart = start;
+    queryrange.Length.QuadPart = length;
+
+	if (m_hFileRead == INVALID_HANDLE_VALUE) {
+	  return;
+	}
+
+	DeviceIoControl(m_hFileRead, FSCTL_QUERY_ALLOCATED_RANGES, &queryrange, sizeof(queryrange), ranges, sizeof(ranges), &nbytes, NULL);
+    int n = nbytes / sizeof(FILE_ALLOCATED_RANGE_BUFFER);
+
+	if (n > 0) {
+		*newstartpos = start+ranges[0].Length.QuadPart;
+#ifdef _DEBUG
+	  Log("israngeavail_nextstart: Rangecount: %d Start: %I64d Length req: %I64d new start: %I64d", n, start, length, *newstartpos);
+#endif
+	} else {
+	  Log("israngeavail_nextstart: THIS SHOULD NOT HAPPEN! NO BLOCK FOUND! Rangecount: %d Start: %I64d Length req: %I64d", n, start, length);
+	}
+}
+
 string DownloaderThread_GetDownloaderMsg()
 {
   if ( m_DownloaderQueue.size() == 0 )
@@ -211,8 +284,8 @@ DWORD DownloaderThread_WriteData(LONGLONG startpos, char *buffer, int buffersize
 	iPos.QuadPart = startpos;
 	DWORD dr = SetFilePointer(m_hFileWrite, iPos.LowPart, &iPos.HighPart, FILE_BEGIN);
 	if (dr == INVALID_SET_FILE_POINTER) {
-		dr = ::GetLastError();
-		if (dr != NO_ERROR) throw dr;
+		Log("DownloaderThread_WriteData: INVALID_SET_FILE_POINTER");
+		return 0;
 	}
 
     // Write the data to the temp file.
@@ -223,6 +296,7 @@ DWORD DownloaderThread_WriteData(LONGLONG startpos, char *buffer, int buffersize
 		return err;
     }
     m_llDownloadPos += buffersize;
+	Log("DownloaderThread_WriteData: Wrote from: %I64d to: %I64d Length: %u Buffer: %d downpos: %I64d", startpos, startpos+cbWritten, cbWritten, buffersize, m_llDownloadPos);
 
 	return 0;
 }
@@ -322,6 +396,19 @@ UINT CALLBACK DownloaderThread(void* param)
 		   if (bytesrec > 0) {
      		   bytesrec_sum += bytesrec;
 
+			   // TODO
+			   // check here IF the next Write / dataget will oberlapp with Data which is already written?
+			   // startpos+bytesrec_sum-bytesrec
+			   if (m_DownloaderQueue.size() == 0 && israngeavail(0, m_llDownloadLength)) {
+				   Log("AAAAAAAAAAAAAAAAA Range is avail: Start: %I64d End: %I64d, DStart: %I64d DPos: %I64d", startpos+bytesrec_sum-bytesrec, startpos+bytesrec_sum-bytesrec+bytesrec, m_llDownloadStart, m_llDownloadPos);
+/*			       LONGLONG newstartpos;
+				   israngeavail_nextstart(startpos+bytesrec_sum-bytesrec, m_llDownloadLength, &newstartpos);
+				   Log("DownloaderThread: write range is already available Start: %I64d End: %I64d New startpos: %I64d", startpos+bytesrec_sum-bytesrec, startpos+bytesrec_sum-bytesrec+bytesrec, newstartpos);
+				   char msg[500];
+				   sprintf_s(msg, sizeof(msg), "%s || %I64d", url, newstartpos);
+				   m_DownloaderQueue.push((string)msg);*/
+			   }
+
 		       if (m_DownloaderQueue.size() > 0) {
 			     time_end = GetSystemTimeInMS();
 			 	 LONGLONG bytesdiff = bytesrec_sum-bytesrec_sum_old;
@@ -335,9 +422,7 @@ UINT CALLBACK DownloaderThread(void* param)
 				 break;
 		       }
 
-		       DownloaderThread_WriteData(startpos+bytesrec_sum-bytesrec, buffer, bytesrec);
-			   // TODO
-			   // check here IF the next Write / dataget will oberlapp with Data which is already written?
+	           DownloaderThread_WriteData(startpos+bytesrec_sum-bytesrec, buffer, bytesrec);
 
                time_end = GetSystemTimeInMS();
 			   if (!buffcalc && (time_end-time_start) > 500) {
@@ -429,9 +514,9 @@ void FireDownloaderThread()
 HRESULT CHttpStream::Downloader_Start(TCHAR* szUrl, LONGLONG startpoint) 
 {
   // char msg[strlen(szUrl)+strlen(_i64toa(startpoint))+4+1];
-  char msg[500];
   Log("CHttpStream::Downloader_Start called with URL: %s Startpos: %I64d", szUrl, startpoint);
 
+  char msg[500];
   sprintf_s(msg, sizeof(msg), "%s || %I64d", szUrl, startpoint);
   m_DownloaderQueue.push((string)msg);
 
@@ -544,6 +629,8 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
    }
    // Request the start and END
    add_to_downloadqueue(0);
+   // STEFAN
+   Sleep(10000);
    WaitForSize(0, (256*1024));
    add_to_downloadqueue(dsize-(256*1024));
    WaitForSize(dsize-(256*1024), dsize);
@@ -619,38 +706,6 @@ HRESULT CHttpStream::add_to_downloadqueue(LONGLONG startpos)
     }
 
 	return S_OK;
-}
-
-BOOL CHttpStream::israngeavail(LONGLONG start, LONGLONG length) 
-{
-	FILE_ALLOCATED_RANGE_BUFFER queryrange;
-    FILE_ALLOCATED_RANGE_BUFFER ranges[1024];
-	DWORD nbytes;
-
-	queryrange.FileOffset.QuadPart = start;
-    queryrange.Length.QuadPart = length;
-
-	if (m_hFileRead == INVALID_HANDLE_VALUE) {
-	  return FALSE;
-	}
-
-	DeviceIoControl(m_hFileRead, FSCTL_QUERY_ALLOCATED_RANGES, &queryrange, sizeof(queryrange), ranges, sizeof(ranges), &nbytes, NULL);
-    int n = nbytes / sizeof(FILE_ALLOCATED_RANGE_BUFFER);
-	// should be only ONE Range
-	// Filestart ranges[i].FileOffset.QuadPart,
-#ifdef _DEBUG
-	if (n == 0) {
-	  Log("CHttpStream::israngeavail: Rangecount: %d Start: %I64d Length req: %I64d", n, start, length);
-	} else {
-	  Log("CHttpStream::israngeavail: Rangecount: %d Start: %I64d Length req: %I64d avail length: %I64d", n, start, length, ranges[0].Length.QuadPart);
-	}
-#endif
-
-	if (n == 1 && ranges[0].Length.QuadPart >= length) {
-       return TRUE;
-	}
-
-	return FALSE;
 }
 
 void CHttpStream::WaitForSize(LONGLONG start, LONGLONG end) 
@@ -758,7 +813,7 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
             m_pEventSink->Notify(EC_BUFFERING_DATA, TRUE, 0);
         }
 
-		Log("CHttpStream::StartRead: wait for start: %I64d end: %I64d - reachlimit: %s", pos.QuadPart, llReadEnd, (reachlimit) ? "true" : "false");
+		Log("CHttpStream::StartRead: wait for start: %I64d end: %I64d", pos.QuadPart, llReadEnd);
         m_llBytesRequested = llReadEnd;
         WaitForSize(pos.QuadPart, llReadEnd);
 		m_llBytesRequested = 0;

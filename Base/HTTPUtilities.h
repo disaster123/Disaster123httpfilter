@@ -1,6 +1,25 @@
 
 extern void Log(const char *fmt, ...);
 
+BOOL SparseFileSuppored(LPCTSTR lpVolRootPath)
+{
+    DWORD dwFlags;
+
+    GetVolumeInformation(
+        lpVolRootPath, 
+        NULL, 
+        MAX_PATH, 
+        NULL, 
+        NULL,
+        &dwFlags, 
+        NULL, 
+        MAX_PATH);
+
+   if (dwFlags & FILE_SUPPORTS_SPARSE_FILES) return TRUE;
+   return FALSE;
+
+}
+
 void stringreplace(string& str, string search, string replace)
 {
     ASSERT( search != replace );
