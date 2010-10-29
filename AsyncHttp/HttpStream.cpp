@@ -57,7 +57,7 @@ LONGLONG	m_llDownloadStart  = -1;
 LONGLONG	m_llDownloadPos  = -1;
 LONGLONG    m_llBytesRequested = 0;     // Size of most recent read request.
 BOOL        m_llSeekPos = TRUE;
-float       m_lldownspeed;
+float       m_lldownspeed = 0.05F;
 string      add_headers;
 #pragma endregion
 
@@ -400,7 +400,7 @@ UINT CALLBACK DownloaderThread(void* param)
 
                if (bytesrec < SPARSE_BLOCK_SIZE) {
                    if ( (m_llDownloadPos+bytesrec) == m_llDownloadLength )  {
-                       Log("DownloaderThread: got %d bytes instead of a full buffer of size %I64d - but this is OK it es END of file", bytesrec, (LONGLONG)SPARSE_BLOCK_SIZE);
+                       Log("DownloaderThread: got %d bytes instead of a full buffer of size %I64d - but this is OK it is END of file", bytesrec, (LONGLONG)SPARSE_BLOCK_SIZE);
                    } else {
                        Log("DownloaderThread: got %d bytes instead of a full buffer of size %I64d - restart download at pos %I64d", bytesrec, (LONGLONG)SPARSE_BLOCK_SIZE, m_llDownloadPos);
 				       char msg[500];
@@ -554,6 +554,7 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
 	  char *szHost = NULL;
       char *szPath = NULL;
 	  int   szPort = NULL;
+      LONGLONG runtime = GetSystemTimeInMS();
 	  
 	  Log("ServerPreCheck: Start for URL: %s", url);
 
@@ -639,7 +640,13 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
        SAFE_DELETE_ARRAY(szHost);
 	   SAFE_DELETE_ARRAY(szPath);
 
-   Log("\n\nServerPreCheck: SERVER OK => SUPPORTED!\n");
+       Log("\n\nServerPreCheck: SERVER OK => SUPPORTED!\n");
+
+	   runtime = GetSystemTimeInMS()-runtime;
+	   if (runtime > 2500) {
+  		 Log("ServerPreCheck: Remote Server is too slow to render anything! Connect Time: %I64d", runtime);
+		 return E_FAIL;
+	   }
 
    HRESULT hr = CreateTempFile(dsize);
    if (FAILED(hr) || m_hFileWrite == INVALID_HANDLE_VALUE || m_hFileRead == INVALID_HANDLE_VALUE) {
@@ -651,7 +658,7 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
    WaitForSize(0, (256*1024));
    add_to_downloadqueue(dsize-(256*1024));
    WaitForSize(dsize-(256*1024), dsize);
-   Log("ServerPreCheck: Prebuffer of file done");
+   Log("\nServerPreCheck: PREBUFFER of file done\n");
 
    return S_OK;
 }
@@ -665,9 +672,6 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
         return E_FAIL;
     }
 
-    // new file new location new server reset downloadspeed
-    // and copy filename to global filename variable
-    m_lldownspeed = 0.05F; // assume 50kb/s as a start value
     add_headers = "";
 
     string searcher = lpszFileName;
@@ -691,19 +695,16 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
 
 	m_szTempFile[0] = TEXT('0');
 
-	LONGLONG runtime = GetSystemTimeInMS();
 	hr = ServerPreCheck(m_FileName);
-	runtime = GetSystemTimeInMS()-runtime;
     if (FAILED(hr))
     {
         return hr;
     }
-	if (runtime > 4000) {
-		Log("CHttpStream::Initialize: Remote Server is too slow to render anything! Connect Time: %I64d", runtime);
-		return E_FAIL;
-	}
 
-    hr = Downloader_Start(m_FileName, 0);
+    LONGLONG realstartpos;
+    // get real first downloadpos
+    israngeavail_nextstart(0, m_llDownloadLength, &realstartpos);
+    hr = Downloader_Start(m_FileName, realstartpos);
     if (FAILED(hr))
     {
         return hr;
