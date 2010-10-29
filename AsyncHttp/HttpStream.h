@@ -46,6 +46,7 @@ public:
 	HRESULT Initialize(LPCTSTR lpszFileName);
     HRESULT add_to_downloadqueue(LONGLONG startpos);
     void WaitForSize(LONGLONG start, LONGLONG end);
+	BOOL CHttpStream::israngeavail(LONGLONG start, LONGLONG length);
 
     HRESULT SetEventSink(IMediaEventSink *pSink)
     {
