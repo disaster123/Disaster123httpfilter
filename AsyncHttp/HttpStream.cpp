@@ -93,7 +93,7 @@ void israngeavail_nextstart(LONGLONG start, LONGLONG end, LONGLONG* newstartpos)
 {
     int chunkstart = getchunkpos(start);
     int chunkend = getchunkpos(end-1);
-    *newstartpos = chunkend*CHUNK_SIZE;
+    *newstartpos = (LONGLONG)chunkend*CHUNK_SIZE;
 
     if (chunkend > (int)CHUNK_V.size()) {
         Log("israngeavail_nextstart: !!! chunkend is bigger than CHUNK Vector");
@@ -101,8 +101,8 @@ void israngeavail_nextstart(LONGLONG start, LONGLONG end, LONGLONG* newstartpos)
     }
     for (int i = chunkstart; i <= chunkend; i++) {
         if (!CHUNK_V[i]) {
-            *newstartpos = i*CHUNK_SIZE;
-            Log("israngeavail_nextstart: start: %I64d end: %I64d chunkstart: %d chunkend: %d loopcount: %d newstartpos: %I64d", start, end, chunkstart, chunkend, i, *newstartpos);
+            *newstartpos = (LONGLONG)i*CHUNK_SIZE;
+            Log("israngeavail_nextstart: start: %I64d end: %I64d chunkstart: %d chunkend: %d chunkpos: %d newstartpos: %I64d", start, end, chunkstart, chunkend, i, *newstartpos);
             break;
         }
     }
@@ -759,7 +759,7 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
 	LONGLONG llLength = dwBytesToRead;
 	LONGLONG llReadEnd = pos.QuadPart + llLength;
 
-    Log("CHttpStream::StartRead: read from %I64d (%.4Lf MB) to %I64d (%.4Lf MB)", pos.QuadPart, ((float)pos.QuadPart/1024/1024), llReadEnd, ((float)llReadEnd/1024/1024) );
+    //Log("CHttpStream::StartRead: read from %I64d (%.4Lf MB) to %I64d (%.4Lf MB)", pos.QuadPart, ((float)pos.QuadPart/1024/1024), llReadEnd, ((float)llReadEnd/1024/1024) );
 
 	if ((m_llDownloadLength > 0) && (pos.QuadPart > m_llDownloadLength || llReadEnd > m_llDownloadLength)) {
 	   Log("CHttpStream::StartRead: THIS SHOULD NEVER HAPPEN! requested start or endpos out of max. range - return end of file");
@@ -771,7 +771,7 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
     if (!israngeavail(pos.QuadPart,llLength))
     {
       // request is out of range let's check if we can reach it
-      Log("CHttpStream::StartRead: Request out of range - downstart: %I64d (%.4Lf MB) downpos: %I64d (%.4Lf MB)", m_llDownloadStart, ((float)m_llDownloadStart/1024/1024), m_llDownloadPos, ((float)m_llDownloadPos/1024/1024) );
+      //Log("CHttpStream::StartRead: Request out of range - downstart: %I64d (%.4Lf MB) downpos: %I64d (%.4Lf MB)", m_llDownloadStart, ((float)m_llDownloadStart/1024/1024), m_llDownloadPos, ((float)m_llDownloadPos/1024/1024) );
 
 	  // check if we can reach the barrier at all
 	  if ((pos.QuadPart >= m_llDownloadStart) && (llReadEnd > m_llDownloadPos))
