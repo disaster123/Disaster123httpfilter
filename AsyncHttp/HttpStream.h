@@ -72,6 +72,7 @@ public:
 	HRESULT Cancel();
 
     HRESULT Length(LONGLONG *pTotal, LONGLONG *pAvailable);
+    HRESULT Length(LONGLONG *pTotal, LONGLONG *pAvailable, BOOL realvalue);
 	DWORD Alignment() { return 1; }
 
 	void Lock();

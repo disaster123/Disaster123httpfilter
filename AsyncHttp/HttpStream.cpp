@@ -56,6 +56,7 @@ HANDLE		m_hFileRead = INVALID_HANDLE_VALUE;    // File handle for reading from t
 LONGLONG	m_llDownloadLength = -1;
 LONGLONG	m_llDownloadStart  = -1;
 LONGLONG	m_llDownloadPos  = -1;
+LONGLONG	m_llDownloadedBytes  = -1;
 LONGLONG    m_llBytesRequested = 0;     // Size of most recent read request.
 BOOL        m_llSeekPos = TRUE;
 float       m_lldownspeed = 0.05F;
@@ -93,7 +94,7 @@ void israngeavail_nextstart(LONGLONG start, LONGLONG end, LONGLONG* newstartpos)
 {
     int chunkstart = getchunkpos(start);
     int chunkend = getchunkpos(end-1);
-    *newstartpos = (LONGLONG)chunkend*CHUNK_SIZE;
+    *newstartpos = -1;
 
     if (chunkend > (int)CHUNK_V.size()) {
         Log("israngeavail_nextstart: !!! chunkend is bigger than CHUNK Vector");
@@ -228,7 +229,7 @@ HRESULT CreateTempFile(LONGLONG dsize)
     }
 
     // set chunk_v size
-    Log("CreateTempFile: Chunks: %d", getchunkpos(dsize)+1);
+    Log("CreateTempFile: %s Chunks: %d", m_szTempFile, getchunkpos(dsize)+1);
     CHUNK_V.resize(getchunkpos(dsize)+1, FALSE);
 
 return S_OK;
@@ -273,6 +274,7 @@ DWORD DownloaderThread_WriteData(LONGLONG startpos, char *buffer, int buffersize
     // do this BEFORE m_llDownloadPos - as we always set the starting point
     CHUNK_V[getchunkpos(m_llDownloadPos)] = TRUE;
     m_llDownloadPos += cbWritten;
+    m_llDownloadedBytes += cbWritten;
     //Log("DownloaderThread_WriteData: Wrote from: %I64d to: %I64d Chunk: %d Length: %u Buffer: %d downpos: %I64d", startpos, startpos+cbWritten, getchunkpos(m_llDownloadPos-cbWritten), cbWritten, buffersize, m_llDownloadPos);
 
 	return 0;
@@ -281,6 +283,7 @@ DWORD DownloaderThread_WriteData(LONGLONG startpos, char *buffer, int buffersize
 void DownloaderThread_initvars(LONGLONG startpos) {
 	m_llDownloadStart = startpos;
 	m_llDownloadPos = startpos;
+    m_llDownloadedBytes = 0;
     m_llBytesRequested = 0;
 }
 
@@ -390,8 +393,8 @@ UINT CALLBACK DownloaderThread(void* param)
                if (m_DownloaderQueue.size() == 0 && israngeavail(m_llDownloadPos, bytesrec)) {
 			       LONGLONG newstartpos;
 				   israngeavail_nextstart(m_llDownloadPos, m_llDownloadLength, &newstartpos);
-                   if (newstartpos >= m_llDownloadLength) {
-                       Log("DownloaderThread: newstartpos >= m_llDownloadLength reached - cancel furthor download");
+                   if (newstartpos >= m_llDownloadLength || newstartpos <= 0) {
+                       Log("DownloaderThread: newstartpos >= m_llDownloadLength reached - cancel furthur download");
                        break;
                    }
 				   Log("DownloaderThread: write range is already available Start: %I64d End: %I64d New startpos: %I64d", m_llDownloadPos, m_llDownloadPos+bytesrec, newstartpos);
@@ -588,7 +591,7 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
           Log("\n\nServerPreCheck: REDIRECTED to %s!\n", newurl.c_str());
           return ServerPreCheck(newurl.c_str());
        }
-       else if (statuscode == 200) {
+       else if (statuscode == 200 || statuscode == 416) {
             Log("\n\nServerPreCheck: SERVER DOES NOT SUPPORT SEEKING!\n");
             m_llSeekPos = FALSE;
        }
@@ -625,8 +628,10 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
    runtime = GetSystemTimeInMS();
    add_to_downloadqueue(0);
    WaitForSize(0, (256*1024));
-   add_to_downloadqueue(dsize-(256*1024));
-   WaitForSize(dsize-(256*1024), dsize);
+   if (m_llSeekPos) {
+     add_to_downloadqueue(dsize-(256*1024));
+     WaitForSize(dsize-(256*1024), dsize);
+   }
    Log("\n\nServerPreCheck: PREBUFFER of file done\n");
 
    runtime = GetSystemTimeInMS()-runtime;
@@ -679,6 +684,8 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
 
     /*
     TODO: don't start here - real read request wlll tell us where
+    BUT NOT if the client waits until we buffer something
+    */
     LONGLONG realstartpos;
     // get real first downloadpos
     israngeavail_nextstart(0, m_llDownloadLength, &realstartpos);
@@ -687,7 +694,6 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
     {
         return hr;
     }
-    */
 
 	return S_OK;
 }
@@ -759,7 +765,9 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
 	LONGLONG llLength = dwBytesToRead;
 	LONGLONG llReadEnd = pos.QuadPart + llLength;
 
-    //Log("CHttpStream::StartRead: read from %I64d (%.4Lf MB) to %I64d (%.4Lf MB)", pos.QuadPart, ((float)pos.QuadPart/1024/1024), llReadEnd, ((float)llReadEnd/1024/1024) );
+#ifdef _DEBUG
+    Log("CHttpStream::StartRead: read from %I64d (%.4Lf MB) to %I64d (%.4Lf MB)", pos.QuadPart, ((float)pos.QuadPart/1024/1024), llReadEnd, ((float)llReadEnd/1024/1024) );
+#endif
 
 	if ((m_llDownloadLength > 0) && (pos.QuadPart > m_llDownloadLength || llReadEnd > m_llDownloadLength)) {
 	   Log("CHttpStream::StartRead: THIS SHOULD NEVER HAPPEN! requested start or endpos out of max. range - return end of file");
@@ -771,8 +779,9 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
     if (!israngeavail(pos.QuadPart,llLength))
     {
       // request is out of range let's check if we can reach it
-      //Log("CHttpStream::StartRead: Request out of range - downstart: %I64d (%.4Lf MB) downpos: %I64d (%.4Lf MB)", m_llDownloadStart, ((float)m_llDownloadStart/1024/1024), m_llDownloadPos, ((float)m_llDownloadPos/1024/1024) );
-
+#ifdef _DEBUG
+      Log("CHttpStream::StartRead: Request out of range - downstart: %I64d (%.4Lf MB) downpos: %I64d (%.4Lf MB)", m_llDownloadStart, ((float)m_llDownloadStart/1024/1024), m_llDownloadPos, ((float)m_llDownloadPos/1024/1024) );
+#endif
 	  // check if we can reach the barrier at all
 	  if ((pos.QuadPart >= m_llDownloadStart) && (llReadEnd > m_llDownloadPos))
       {
@@ -943,32 +952,16 @@ HRESULT CHttpStream::EndRead(
 HRESULT CHttpStream::Cancel()
 {
     Log("CHttpStream::Cancel()");
-    typedef BOOL (*CANCELIOEXPROC)(HANDLE hFile, LPOVERLAPPED lpOverlapped);
-
-    BOOL bResult = 0;
-    CANCELIOEXPROC pfnCancelIoEx = NULL;
-
-    HMODULE hKernel32 = LoadLibrary("Kernel32.dll"); 
-
-    if (hKernel32)
-    {
-        bResult = (pfnCancelIoEx)(m_hFileRead, NULL);
-
-        FreeLibrary(hKernel32);
-    }
-    else
-    {
-        bResult = CancelIo(m_hFileRead);
-    }
-
-	if (!bResult)
-	{
-		return HRESULT_FROM_WIN32(GetLastError());
-	}
+    m_DownloaderShouldRun = FALSE;
     return S_OK;
 }
 
 HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
+{
+    return Length(&*pTotal, &*pAvailable, FALSE);
+}
+
+HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable, BOOL realvalue)
 {
     ASSERT(pTotal != NULL);
     ASSERT(pAvailable != NULL);
@@ -995,9 +988,9 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
         }
     }
 
-    if (!m_llSeekPos) {
+    if (!m_llSeekPos || realvalue) {
         *pTotal = m_llDownloadLength;
-		*pAvailable = m_llDownloadPos;
+		*pAvailable = m_llDownloadedBytes;
     } else {
         *pTotal = m_llDownloadLength;
         *pAvailable = *pTotal;

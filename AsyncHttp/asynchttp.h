@@ -55,6 +55,8 @@ public:
     {
         if (riid == IID_IFileSourceFilter) {
             return GetInterface((IFileSourceFilter *)this, ppv);
+        } else if (riid == IID_IAMOpenProgress) {
+            return GetInterface((IAMOpenProgress *)this, ppv);
         } else {
             return CAsyncReader::NonDelegatingQueryInterface(riid, ppv);
         }
@@ -186,25 +188,16 @@ public:
 
 	STDMETHODIMP QueryProgress(LONGLONG* pllTotal, LONGLONG* pllCurrent)
     {
-      Log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA QueryProgress called!!!");
-      Sleep(500);
       LONGLONG llLength = 0, llAvailable = 0;
-      Log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA QueryProgress called!!!");
-      Sleep(500);
       *pllTotal = llLength;
       *pllCurrent = llAvailable;
 
-      Log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA QueryProgress called!!!");
-      Sleep(500);
       if (!m_pFileName) {
           return S_OK;
       }
 
-      Log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA QueryProgress called!!!");
-      Sleep(500);
-      HRESULT hr = m_FileStream.Length(&llLength, &llAvailable);
-      Log("QueryProgress m_FileStream.Length done!!!");
-      Sleep(500);
+      HRESULT hr = m_FileStream.Length(&llLength, &llAvailable, TRUE);
+      // Log("QueryProgress m_FileStream.Length done!!! %I64d %I64d", llLength, llAvailable);
       
       if (SUCCEEDED(hr)) {
           *pllTotal = llLength;
@@ -221,7 +214,7 @@ public:
 
     STDMETHODIMP AbortOperation()
     {
-	   Log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA AbortOperation called");
+	   //Log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA AbortOperation called");
        return m_FileStream.Cancel();
 	   //return E_NOTIMPL;
     }
