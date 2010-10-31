@@ -1,23 +1,10 @@
 
 extern void Log(const char *fmt, ...);
 
-BOOL SparseFileSuppored(LPCTSTR lpVolRootPath)
+int getchunkpos(LONGLONG filepos) 
 {
-    DWORD dwFlags;
-
-    GetVolumeInformation(
-        lpVolRootPath, 
-        NULL, 
-        MAX_PATH, 
-        NULL, 
-        NULL,
-        &dwFlags, 
-        NULL, 
-        MAX_PATH);
-
-   if (dwFlags & FILE_SUPPORTS_SPARSE_FILES) return TRUE;
-   return FALSE;
-
+    // truncating is OK as the vector starts with pos. 0
+   return (int)(filepos/CHUNK_SIZE);
 }
 
 void stringreplace(string& str, string search, string replace)

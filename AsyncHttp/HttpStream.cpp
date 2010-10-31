@@ -23,6 +23,7 @@
 #include <atlconv.h>
 #include <math.h>
 #include <time.h>
+#include <vector>
 
 #include <tchar.h>
 #include <cstdio>
@@ -58,84 +59,54 @@ LONGLONG	m_llDownloadPos  = -1;
 LONGLONG    m_llBytesRequested = 0;     // Size of most recent read request.
 BOOL        m_llSeekPos = TRUE;
 float       m_lldownspeed = 0.05F;
+vector<BOOL> CHUNK_V; // this is the HAVING CHUNK Vector :-)
 string      add_headers;
 #pragma endregion
 
 /*
  This is the stuff the downloads thread needs and holds
 */
-
 BOOL israngeavail(LONGLONG start, LONGLONG length) 
 {
-#ifndef AUTOLOCK_DEBUG
-    CAutoLock lock(&m_datalock);
-#endif
-#ifdef AUTOLOCK_DEBUG
-	CAutoLockDebug lock(&m_datalock, __LINE__, __FILE__,__FUNCTION__);
-#endif
+    // remove
+    int chunkstart = getchunkpos(start);
+    // remove one byte - so that we don't reach strange barries
+    int chunkend = getchunkpos(start+length-1);
 
-	FILE_ALLOCATED_RANGE_BUFFER queryrange;
-    FILE_ALLOCATED_RANGE_BUFFER ranges[1024];
-	DWORD nbytes;
-
-	queryrange.FileOffset.QuadPart = start;
-    queryrange.Length.QuadPart = length;
-
-	if (m_hFileRead == INVALID_HANDLE_VALUE) {
-	  return FALSE;
-	}
-
-	DeviceIoControl(m_hFileRead, FSCTL_QUERY_ALLOCATED_RANGES, &queryrange, sizeof(queryrange), ranges, sizeof(ranges), &nbytes, NULL);
-    int n = nbytes / sizeof(FILE_ALLOCATED_RANGE_BUFFER);
-	// should be only ONE Range
-	// Filestart ranges[i].FileOffset.QuadPart,
-/*
-    if (n == 0) {
-	  Log("israngeavail: Rangecount: %d Start: %I64d Length req: %I64d", n, start, length);
-	} else {
-	  Log("israngeavail: Rangecount: %d Start: %I64d Length req: %I64d avail length: %I64d", n, start, length, ranges[0].Length.QuadPart);
-	}
-*/
-
-	if (n == 1 && ranges[0].Length.QuadPart >= length) {
-       return TRUE;
-	}
-
-	return FALSE;
+    if (chunkend > (int)CHUNK_V.size()) {
+        Log("israngeavail: !!! chunkend is bigger than CHUNK Vector");
+         return FALSE;
+    }
+    int i;
+    for (i = chunkstart; i <= chunkend; i++) {
+        if (!CHUNK_V[i]) {
+            //Log("israngeavail: start: %I64d (chunk: %d) end: %I64d (chunk: %d) chunkpos %d NOT AVAIL", start, chunkstart, start+length, chunkend, i);
+            return FALSE;
+        }
+    }
+    // just for logging as i is incremented one more time
+    //Log("israngeavail: start: %I64d (chunk: %d) end: %I64d (chunk: %d) chunkpos %d IS AVAIL", start, chunkstart, start+length, chunkend, --i);
+    return TRUE;
 }
 
 void israngeavail_nextstart(LONGLONG start, LONGLONG end, LONGLONG* newstartpos) 
 {
-#ifndef AUTOLOCK_DEBUG
-    CAutoLock lock(&m_datalock);
-#endif
-#ifdef AUTOLOCK_DEBUG
-	CAutoLockDebug lock(&m_datalock, __LINE__, __FILE__,__FUNCTION__);
-#endif
+    int chunkstart = getchunkpos(start);
+    int chunkend = getchunkpos(end-1);
+    *newstartpos = chunkend*CHUNK_SIZE;
 
-	FILE_ALLOCATED_RANGE_BUFFER queryrange;
-    FILE_ALLOCATED_RANGE_BUFFER ranges[1024];
-	DWORD nbytes;
-	LONGLONG length = end-start;
+    if (chunkend > (int)CHUNK_V.size()) {
+        Log("israngeavail_nextstart: !!! chunkend is bigger than CHUNK Vector");
+        return;
+    }
+    for (int i = chunkstart; i <= chunkend; i++) {
+        if (!CHUNK_V[i]) {
+            *newstartpos = i*CHUNK_SIZE;
+            Log("israngeavail_nextstart: start: %I64d end: %I64d chunkstart: %d chunkend: %d loopcount: %d newstartpos: %I64d", start, end, chunkstart, chunkend, i, *newstartpos);
+            break;
+        }
+    }
 
-	queryrange.FileOffset.QuadPart = start;
-    queryrange.Length.QuadPart = length;
-
-	if (m_hFileRead == INVALID_HANDLE_VALUE) {
-	  return;
-	}
-
-	DeviceIoControl(m_hFileRead, FSCTL_QUERY_ALLOCATED_RANGES, &queryrange, sizeof(queryrange), ranges, sizeof(ranges), &nbytes, NULL);
-    int n = nbytes / sizeof(FILE_ALLOCATED_RANGE_BUFFER);
-
-	if (n > 0) {
-		*newstartpos = start+ranges[0].Length.QuadPart;
-#ifdef _DEBUG
-	  Log("israngeavail_nextstart: Rangecount: %d Start: %I64d Length req: %I64d new start: %I64d", n, start, length, *newstartpos);
-#endif
-	} else {
-	  Log("israngeavail_nextstart: THIS SHOULD NOT HAPPEN! NO BLOCK FOUND! Rangecount: %d Start: %I64d Length req: %I64d", n, start, length);
-	}
 }
 
 string DownloaderThread_GetDownloaderMsg()
@@ -217,15 +188,6 @@ HRESULT CreateTempFile(LONGLONG dsize)
 		return HRESULT_FROM_WIN32(GetLastError());
 	}
 
-	Log("DCreateTempFile: Created Tempfile %s - setting sparse file", m_szTempFile);
-    if (!DeviceIoControl(m_hFileWrite, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &cch, NULL))
-    {
-		Log("CreateTempFile: Couldn't set sparse");
-		m_szTempFile[0] = TEXT('\0');
-		return HRESULT_FROM_WIN32(GetLastError());
-	}
-
-
     // Open a read handle for the same temp file.
     m_hFileRead = CreateFile(
         m_szTempFile,
@@ -249,6 +211,11 @@ HRESULT CreateTempFile(LONGLONG dsize)
 		return HRESULT_FROM_WIN32(GetLastError());
 	}
 
+    if (!DeviceIoControl(m_hFileWrite, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &cch, NULL))
+    {
+		Log("CreateTempFile: Couldn't set sparse - working without sparse");
+	}
+
     LARGE_INTEGER fsize;
     fsize.QuadPart = dsize;
     if (SetFilePointerEx(m_hFileWrite, fsize, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
@@ -259,6 +226,10 @@ HRESULT CreateTempFile(LONGLONG dsize)
 	   Log("CreateTempFile: Couldn't set end of file %I64d", dsize);
        return E_FAIL;
     }
+
+    // set chunk_v size
+    Log("CreateTempFile: Chunks: %d", getchunkpos(dsize)+1);
+    CHUNK_V.resize(getchunkpos(dsize)+1, FALSE);
 
 return S_OK;
 }
@@ -299,8 +270,10 @@ DWORD DownloaderThread_WriteData(LONGLONG startpos, char *buffer, int buffersize
 		DWORD err = GetLastError();
 		return err;
     }
+    // do this BEFORE m_llDownloadPos - as we always set the starting point
+    CHUNK_V[getchunkpos(m_llDownloadPos)] = TRUE;
     m_llDownloadPos += cbWritten;
-	//Log("DownloaderThread_WriteData: Wrote from: %I64d to: %I64d Length: %u Buffer: %d downpos: %I64d", startpos, startpos+cbWritten, cbWritten, buffersize, m_llDownloadPos);
+    //Log("DownloaderThread_WriteData: Wrote from: %I64d to: %I64d Chunk: %d Length: %u Buffer: %d downpos: %I64d", startpos, startpos+cbWritten, getchunkpos(m_llDownloadPos-cbWritten), cbWritten, buffersize, m_llDownloadPos);
 
 	return 0;
 }
@@ -335,8 +308,8 @@ UINT CALLBACK DownloaderThread(void* param)
 	   // get message from the queue AND URL and POS from queuestring
 	   LONGLONG tmp_startpos;
        DownloaderThread_geturlpos(&url, &tmp_startpos, DownloaderThread_GetDownloaderMsg());
-       // allign startpos to SPARSE_BLOCK_SIZE
-       startpos = (LONGLONG)(tmp_startpos/SPARSE_BLOCK_SIZE) * SPARSE_BLOCK_SIZE;
+       // allign startpos to CHUNK_SIZE
+       startpos = (LONGLONG)(tmp_startpos/CHUNK_SIZE) * CHUNK_SIZE;
        Log("DownloaderThread: URL: %s Startpos: %I64d - Aligned Startpos: %I64d", url, tmp_startpos, startpos);
 
        // reinit all variables for THIS download
@@ -384,7 +357,7 @@ UINT CALLBACK DownloaderThread(void* param)
 
 	   //char buffer[1024*128];
 	   //unsigned int buflen = sizeof(buffer)/8; // use 16kb of the buffer as default
-	   char buffer[SPARSE_BLOCK_SIZE];
+       char buffer[CHUNK_SIZE];
 	   BOOL buffcalc = FALSE;
 	   int bytesrec = 0;
 	   LONGLONG bytesrec_sum = 0;
@@ -402,20 +375,18 @@ UINT CALLBACK DownloaderThread(void* param)
 		   if (bytesrec > 0) {
      		   bytesrec_sum += bytesrec;
 
-               if (bytesrec < SPARSE_BLOCK_SIZE) {
+               if (bytesrec < CHUNK_SIZE) {
                    if ( (m_llDownloadPos+bytesrec) == m_llDownloadLength )  {
-                       Log("DownloaderThread: got %d bytes instead of a full buffer of size %I64d - but this is OK it is END of file", bytesrec, (LONGLONG)SPARSE_BLOCK_SIZE);
+                       Log("DownloaderThread: got %d bytes instead of a full buffer of size %I64d - but this is OK it is END of file", bytesrec, (LONGLONG)CHUNK_SIZE);
                    } else {
-                       Log("DownloaderThread: got %d bytes instead of a full buffer of size %I64d - restart download at pos %I64d", bytesrec, (LONGLONG)SPARSE_BLOCK_SIZE, m_llDownloadPos);
+                       Log("DownloaderThread: got %d bytes instead of a full buffer of size %I64d - restart download at pos %I64d", bytesrec, (LONGLONG)CHUNK_SIZE, m_llDownloadPos);
 				       char msg[500];
                        sprintf_s(msg, sizeof(msg), "%s || %I64d", url, m_llDownloadPos);
 				       m_DownloaderQueue.push((string)msg);
                    }
                }
 
-			   // TODO
-			   // check here IF the next Write / dataget will oberlapp with Data which is already written?
-			   // startpos+bytesrec_sum-bytesrec
+               // check if the position we want to write is already there and Queue is 0
                if (m_DownloaderQueue.size() == 0 && israngeavail(m_llDownloadPos, bytesrec)) {
 			       LONGLONG newstartpos;
 				   israngeavail_nextstart(m_llDownloadPos, m_llDownloadLength, &newstartpos);
@@ -445,14 +416,6 @@ UINT CALLBACK DownloaderThread(void* param)
                DownloaderThread_WriteData(m_llDownloadPos, buffer, bytesrec);
 
                time_end = GetSystemTimeInMS();
-/*
-               if (!buffcalc && (time_end-time_start) > 500) {
-				   buffcalc = TRUE;
-                   int i = (int)recv_calls/25;
-			       buflen = max(min(sizeof(buffer), i*buflen), buflen);
-				   Log("DownloaderThread: in 500ms we were called: %I64d times - raising buffer to %d", recv_calls, buflen);
-			   }
-*/
                // print every 3s
                if ((time_end-time_start) > 3000) {
 			 	 LONGLONG bytesdiff = bytesrec_sum-bytesrec_sum_old;
@@ -747,12 +710,12 @@ void CHttpStream::WaitForSize(LONGLONG start, LONGLONG end)
 	LONGLONG length = end-start;
     // wait max. ~20s
 	int i = 0;
-    for (i = 0; i <= 2000; i++) {
+    for (i = 0; i <= 20; i++) {
 		// We need now to check if the requested space is allocated or not...
 		if (israngeavail(start,length)) {
 			break;
 		}
-		Sleep(50);
+		Sleep(100);
     }
 	if (i >= 2000) {
 		Log("CHttpStream::WaitForSize: Timed OUT! Start: %I64d Length: %I64d", start, length);
@@ -796,7 +759,7 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
 	LONGLONG llLength = dwBytesToRead;
 	LONGLONG llReadEnd = pos.QuadPart + llLength;
 
-    Log("CHttpStream::StartRead: trying to read from %I64d (%.4Lf MB) to %I64d (%.4Lf MB)", pos.QuadPart, ((float)pos.QuadPart/1024/1024), llReadEnd, ((float)llReadEnd/1024/1024) );
+    Log("CHttpStream::StartRead: read from %I64d (%.4Lf MB) to %I64d (%.4Lf MB)", pos.QuadPart, ((float)pos.QuadPart/1024/1024), llReadEnd, ((float)llReadEnd/1024/1024) );
 
 	if ((m_llDownloadLength > 0) && (pos.QuadPart > m_llDownloadLength || llReadEnd > m_llDownloadLength)) {
 	   Log("CHttpStream::StartRead: THIS SHOULD NEVER HAPPEN! requested start or endpos out of max. range - return end of file");

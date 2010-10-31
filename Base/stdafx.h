@@ -17,7 +17,7 @@
 #define VC_EXTRALEAN
 #endif
 
-#define SPARSE_BLOCK_SIZE 65536
+#define CHUNK_SIZE 65536
 
 #define SAFE_DELETE(p)       { if(p) { delete (p);     (p)=NULL; } }
 #define SAFE_DELETE_ARRAY(p) { if(p) { delete[] (p);   (p)=NULL; } }
