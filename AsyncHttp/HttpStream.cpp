@@ -251,9 +251,9 @@ HRESULT CreateTempFile(LONGLONG dsize)
 
     LARGE_INTEGER fsize;
     fsize.QuadPart = dsize;
-    DWORD dr = SetFilePointer(m_hFileWrite, fsize.LowPart, &fsize.HighPart, FILE_BEGIN);
+    DWORD dr = SetFilePointerEx(m_hFileWrite, fsize, NULL, FILE_BEGIN);
     if (dr == INVALID_SET_FILE_POINTER) {
-	   Log("CreateTempFile: Couldn't SetFilePointer of file %I64d", dsize);
+	   Log("CreateTempFile: Couldn't SetFilePointerEx of file %I64d", dsize);
        return E_FAIL;
     }
     if (!SetEndOfFile(m_hFileWrite)) {
@@ -282,7 +282,7 @@ DWORD DownloaderThread_WriteData(LONGLONG startpos, char *buffer, int buffersize
 	}
     LARGE_INTEGER iPos;
 	iPos.QuadPart = startpos;
-	DWORD dr = SetFilePointer(m_hFileWrite, iPos.LowPart, &iPos.HighPart, FILE_BEGIN);
+	DWORD dr = SetFilePointerEx(m_hFileWrite, iPos, NULL, FILE_BEGIN);
 	if (dr == INVALID_SET_FILE_POINTER) {
 		DWORD err = GetLastError();
 		LPTSTR Error = 0;
