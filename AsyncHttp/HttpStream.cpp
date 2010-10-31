@@ -251,8 +251,7 @@ HRESULT CreateTempFile(LONGLONG dsize)
 
     LARGE_INTEGER fsize;
     fsize.QuadPart = dsize;
-    DWORD dr = SetFilePointerEx(m_hFileWrite, fsize, NULL, FILE_BEGIN);
-    if (dr == INVALID_SET_FILE_POINTER) {
+    if (SetFilePointerEx(m_hFileWrite, fsize, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
 	   Log("CreateTempFile: Couldn't SetFilePointerEx of file %I64d", dsize);
        return E_FAIL;
     }
@@ -797,7 +796,7 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
 	LONGLONG llLength = dwBytesToRead;
 	LONGLONG llReadEnd = pos.QuadPart + llLength;
 
-    //Log("CHttpStream::StartRead: Startpos requested: %I64d Endpos requested: %I64d", pos.QuadPart, llReadEnd);
+    Log("CHttpStream::StartRead: trying to read from %I64d (%.4Lf MB) to %I64d (%.4Lf MB)", pos.QuadPart, ((float)pos.QuadPart/1024/1024), llReadEnd, ((float)llReadEnd/1024/1024) );
 
 	if ((m_llDownloadLength > 0) && (pos.QuadPart > m_llDownloadLength || llReadEnd > m_llDownloadLength)) {
 	   Log("CHttpStream::StartRead: THIS SHOULD NEVER HAPPEN! requested start or endpos out of max. range - return end of file");
@@ -809,7 +808,7 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
     if (!israngeavail(pos.QuadPart,llLength))
     {
       // request is out of range let's check if we can reach it
-      //Log("CHttpStream::StartRead: Request out of range - wanted start: %I64d end: %I64d min downstart: %I64d downpos: %I64d", pos.QuadPart, llReadEnd, m_llDownloadStart, m_llDownloadPos);
+      Log("CHttpStream::StartRead: Request out of range - downstart: %I64d (%.4Lf MB) downpos: %I64d (%.4Lf MB)", m_llDownloadStart, ((float)m_llDownloadStart/1024/1024), m_llDownloadPos, ((float)m_llDownloadPos/1024/1024) );
 
 	  // check if we can reach the barrier at all
 	  if ((pos.QuadPart >= m_llDownloadStart) && (llReadEnd > m_llDownloadPos))
