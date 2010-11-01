@@ -682,20 +682,22 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
         return hr;
     }
 
-    /*
-    TODO: don't start here - real read request wlll tell us where
-    BUT NOT if the client waits until we buffer something
-    */
-    LONGLONG realstartpos;
-    // get real first downloadpos
-    israngeavail_nextstart(0, m_llDownloadLength, &realstartpos);
-    hr = Downloader_Start(m_FileName, realstartpos);
-    if (FAILED(hr))
-    {
-        return hr;
-    }
+	// only do this if seeking is supported - otherwise
+	// the download is still running from the precheck
+	// also do this - otherwise some programs who query for buffering
+	// will wait forever
+	if (m_llSeekPos) {
+ 	  LONGLONG realstartpos;
+      // get real first downloadpos
+      israngeavail_nextstart(0, m_llDownloadLength, &realstartpos);
+      hr = Downloader_Start(m_FileName, realstartpos);
+      if (FAILED(hr))
+      {
+          return hr;
+      }
+     }
 
-	return S_OK;
+ return S_OK;
 }
 
 HRESULT CHttpStream::add_to_downloadqueue(LONGLONG startpos) 
