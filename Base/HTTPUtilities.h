@@ -1,6 +1,43 @@
 
 extern void Log(const char *fmt, ...);
 
+void GetOperationSystemName(vector<int>& winversion)
+{
+  winversion.resize(3, 0);
+
+  OSVERSIONINFO osinfo;
+
+  osinfo.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
+
+  if (!GetVersionEx(&osinfo)) return;
+
+  winversion[0] = osinfo.dwMajorVersion;
+  winversion[1] = osinfo.dwMinorVersion;
+  winversion[2] = osinfo.dwBuildNumber; 
+
+  return;
+}
+
+static int recv_wait_all(int sock, char* buffer, size_t length, BOOL msg_waitall_support)
+{
+  if (msg_waitall_support) {
+     return recv(sock,buffer,length, MSG_WAITALL);
+  } else {
+	  // Win XP for example
+      int remaining = length;
+      int offset = 0;
+      int bytesread = 0;
+      while ( (remaining>0) && ((bytesread = recv(sock,&(buffer[offset]),remaining, NULL)) > 0) ){
+        offset += bytesread;
+        remaining -= bytesread;
+      }
+     if ( bytesread < 0 ){
+        return bytesread;
+      }
+    return offset;
+  }
+}
+
 int getchunkpos(LONGLONG filepos) 
 {
     // truncating is OK as the vector starts with pos. 0

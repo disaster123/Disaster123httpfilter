@@ -62,6 +62,7 @@ BOOL        m_llSeekPos = TRUE;
 float       m_lldownspeed = 0.05F;
 vector<BOOL> CHUNK_V; // this is the HAVING CHUNK Vector :-)
 string      add_headers;
+vector<int> winversion;
 #pragma endregion
 
 /*
@@ -371,7 +372,8 @@ UINT CALLBACK DownloaderThread(void* param)
        buffer[0] = '\0';
 	   do {
            // use MSG_WAITALL so the buffer should be always complete / full
-		   bytesrec = recv(Socket, buffer, sizeof(buffer), MSG_WAITALL);
+		   // MSG_WAITALL is broken / not available on Win XP to we've to use our own function
+		   bytesrec = recv_wait_all(Socket, buffer, sizeof(buffer), (winversion[0] >= 5 && winversion[1] > 1) ? TRUE : FALSE);
 		   recv_calls++;
 
            // Bytes received write them down
@@ -437,7 +439,7 @@ UINT CALLBACK DownloaderThread(void* param)
 		   Log("DownloaderThread: Download finshed reached end of file! - startpos: %I64d downloaded: %I64d Bytes Remote file size: %I64d", startpos, bytesrec_sum, m_llDownloadLength);
        } else {
          if (bytesrec < 0) {
-       	   Log("DownloaderThread: error received - error: %d", bytesrec);
+       	   Log("DownloaderThread: negative bytes received - error: %d", bytesrec);
          }
          Log("DownloaderThread: Download compl./canceled - startpos: %I64d downloaded: %I64d Bytes Remote file size: %I64d - m_DownloaderShouldRun: %s", startpos, bytesrec_sum, m_llDownloadLength, (m_DownloaderShouldRun)?"true":"false");
        }
@@ -652,6 +654,9 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
         Log("CHttpStream::Initialize: Couldn't init WSA");
         return E_FAIL;
     }
+
+	GetOperationSystemName(winversion);
+	Log("CHttpStream::Initialize: Windows Version: %d.%d.%d", winversion[0], winversion[1], winversion[2]);
 
     add_headers = "";
 
