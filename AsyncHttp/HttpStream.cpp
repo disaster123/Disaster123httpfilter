@@ -371,7 +371,6 @@ UINT CALLBACK DownloaderThread(void* param)
        LONGLONG time_end;
        buffer[0] = '\0';
 	   do {
-           // use MSG_WAITALL so the buffer should be always complete / full
 		   // MSG_WAITALL is broken / not available on Win XP to we've to use our own function
 		   bytesrec = recv_wait_all(Socket, buffer, sizeof(buffer), (winversion[0] >= 5 && winversion[1] > 1) ? TRUE : FALSE);
 		   recv_calls++;
