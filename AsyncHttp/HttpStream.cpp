@@ -285,7 +285,8 @@ DWORD DownloaderThread_WriteData(LONGLONG startpos, char *buffer, int buffersize
 void DownloaderThread_initvars(LONGLONG startpos) {
 	m_llDownloadStart = startpos;
 	m_llDownloadPos = startpos;
-    m_llDownloadedBytes = 0;
+    // this shouldn't be resetted while restart download
+    // m_llDownloadedBytes = 0;
     m_llBytesRequested = 0;
 }
 
@@ -663,6 +664,7 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
 	  ssupp_waitall = FALSE;
 	}
 
+    m_llDownloadedBytes = 0;
     add_headers = "";
 
     string searcher = lpszFileName;
