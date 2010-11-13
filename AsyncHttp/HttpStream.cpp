@@ -173,7 +173,6 @@ HRESULT CreateTempFile(LONGLONG dsize)
     if (m_szTempFile[0] != TEXT('0'))
     {
         DeleteFile(m_szTempFile);
-        m_szTempFile[0] = TEXT('0');
     }
 
 	// Create the temp file and open the handle for writing. 
