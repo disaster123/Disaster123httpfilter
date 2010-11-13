@@ -468,32 +468,36 @@ CHttpStream::~CHttpStream()
 	Log("~CHttpStream() called");
 
 	m_DownloaderShouldRun = false;
-	SAFE_DELETE_ARRAY(m_FileName);
 
 	// give the thread the time to finish
-	Sleep(500);
+	//Sleep(500);
 
 	if (m_hFileWrite != INVALID_HANDLE_VALUE)
 	{
 		CloseHandle(m_hFileWrite);
+        m_hFileWrite = INVALID_HANDLE_VALUE;
 	}
 
     if (m_hFileRead != INVALID_HANDLE_VALUE)
     {
         CloseHandle(m_hFileRead);
+        m_hFileRead = INVALID_HANDLE_VALUE;
     }
 
 	if (m_szTempFile[0] != TEXT('0'))
     {
         DeleteFile(m_szTempFile);
+        m_szTempFile[0] = TEXT('0');
     }
 
     if (m_hDownloader != INVALID_HANDLE_VALUE)
     {
        CloseHandle(m_hDownloader);
+       m_hDownloader = INVALID_HANDLE_VALUE;
     }
 
     StopLogger();
+	SAFE_DELETE_ARRAY(m_FileName);
 }
 
 
