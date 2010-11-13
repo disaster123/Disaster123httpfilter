@@ -57,9 +57,9 @@ LONGLONG	m_llDownloadLength = -1;
 LONGLONG	m_llDownloadStart  = -1;
 LONGLONG	m_llDownloadPos  = -1;
 LONGLONG	m_llDownloadedBytes  = -1;
-LONGLONG    m_llBytesRequested = 0;     // Size of most recent read request.
-BOOL        m_llSeekPos = TRUE;
-float       m_lldownspeed = 0.05F;
+LONGLONG    m_llBytesRequested;     // Size of most recent read request.
+BOOL        m_llSeekPos;
+float       m_lldownspeed;
 vector<BOOL> CHUNK_V; // this is the HAVING CHUNK Vector :-)
 string      add_headers;
 vector<int> winversion;
@@ -129,7 +129,6 @@ HRESULT CreateTempFile(LONGLONG dsize)
 	TCHAR *szTempPath = NULL;
 	DWORD cch = 0;
 
-    Log("GetTempPath");
 	// Query for the size of the temp path.
 	cch = GetTempPath(0, NULL);
 	if (cch == 0)
@@ -138,16 +137,13 @@ HRESULT CreateTempFile(LONGLONG dsize)
 	}
 
 	// Allocate a buffer for the name.
-    Log("szTempPath");
-	szTempPath = new TCHAR[cch];
+    szTempPath = new TCHAR[cch];
 	if (szTempPath == NULL)
 	{
 		return E_OUTOFMEMORY;
 	}
 
 	// Get the temp path.
-        Log("GetTempPath2");
-
 	cch = GetTempPath(cch, szTempPath);
 	if (cch == 0)
 	{
@@ -156,32 +152,28 @@ HRESULT CreateTempFile(LONGLONG dsize)
 	}
 
 	// Get the temp file name.
-        Log("GetTempFileName");
 	UINT uval = GetTempFileName(szTempPath, TEXT("DisasterHTTPFilter"), 0, m_szTempFile);
-
 	delete [] szTempPath;
-
 	if (uval == 0)
 	{
       return HRESULT_FROM_WIN32(GetLastError());
 	}
 
-    Log("CloseHandle(m_hFileWrite)");
     if (m_hFileWrite != INVALID_HANDLE_VALUE) {
       CloseHandle(m_hFileWrite);
       m_hFileWrite = INVALID_HANDLE_VALUE;
     }
-        Log("CloseHandle(m_hFileRead)");
+
     if (m_hFileRead != INVALID_HANDLE_VALUE) {
 	  CloseHandle(m_hFileRead);
       m_hFileRead = INVALID_HANDLE_VALUE;
     }
 
 	// Delete old temp file to store the data.
-        Log("m_szTempFile[0] != TEXT('0')");
     if (m_szTempFile[0] != TEXT('0'))
     {
         DeleteFile(m_szTempFile);
+        m_szTempFile[0] = TEXT('0');
     }
 
 	// Create the temp file and open the handle for writing. 
@@ -215,9 +207,7 @@ HRESULT CreateTempFile(LONGLONG dsize)
 	if (m_hFileRead == INVALID_HANDLE_VALUE) 
 	{
 		Log("CreateTempFile: Could not open temp file for reading.");
-
 		m_szTempFile[0] = TEXT('\0');
-
         CloseHandle(m_hFileWrite);
         m_hFileWrite = INVALID_HANDLE_VALUE;
 
@@ -483,16 +473,19 @@ CHttpStream::~CHttpStream()
 	if (m_hFileWrite != INVALID_HANDLE_VALUE)
 	{
 	  CloseHandle(m_hFileWrite);
+      m_hFileWrite = INVALID_HANDLE_VALUE;
 	}
 
     if (m_hFileRead != INVALID_HANDLE_VALUE)
     {
       CloseHandle(m_hFileRead);
+      m_hFileRead = INVALID_HANDLE_VALUE;
     }
 
 	if (m_szTempFile[0] != TEXT('0'))
     {
       DeleteFile(m_szTempFile);
+      m_szTempFile[0] = TEXT('0');
     }
 
     if (m_hDownloader != NULL)
@@ -503,7 +496,10 @@ CHttpStream::~CHttpStream()
 
     Log("~CHttpStream() StopLogger...");
     StopLogger();
+
 	SAFE_DELETE_ARRAY(m_FileName);
+    // this if the filter is used a second time this value stays to -1 until it is initialized
+    m_llDownloadedBytes  = -1;
     DbgLog((LOG_ERROR,0,TEXT("~CHttpStream() called => END")));
 }
 
@@ -673,6 +669,19 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
         return E_FAIL;
     }
 
+    m_llDownloadLength = -1;
+    m_llDownloadStart  = -1;
+    m_llDownloadPos  = -1;
+    m_llDownloadedBytes  = 0;
+    m_llBytesRequested = 0;
+    m_llSeekPos = TRUE;
+    m_lldownspeed = 0.05F;
+    CHUNK_V.clear();
+    add_headers = "";
+    winversion.clear();
+    ssupp_waitall = TRUE;
+	m_szTempFile[0] = TEXT('0');
+
 	GetOperationSystemName(winversion);
 	Log("CHttpStream::Initialize: Windows Version: %d.%d.%d", winversion[0], winversion[1], winversion[2]);
 	if ( (winversion[0] < 5) ||
@@ -680,9 +689,6 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
 	{
 	  ssupp_waitall = FALSE;
 	}
-
-    m_llDownloadedBytes = 0;
-    add_headers = "";
 
     string searcher = lpszFileName;
     string::size_type pos = 0;
@@ -702,11 +708,6 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
         m_FileName = new TCHAR[strlen(lpszFileName)+1];
       	strcpy(m_FileName, lpszFileName);
     }
-
-	m_szTempFile[0] = TEXT('0');
-    // we need to set this here otherwise CreateTempFile fails when using the filter 2nd time
-    m_hFileRead = INVALID_HANDLE_VALUE;
-    m_hFileWrite = INVALID_HANDLE_VALUE;
 
     DbgLog((LOG_ERROR,0,TEXT("ServerPreCheck start")));
     hr = ServerPreCheck(m_FileName);
