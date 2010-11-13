@@ -122,7 +122,8 @@ UINT CALLBACK LogThread(void* param)
 {
   TCHAR fileName[MAX_PATH];
   LogPath(fileName, "log");
-  while ( m_bLoggerRunning ) {
+  // push out the rest of the queue so check also for queue size
+  while ( m_bLoggerRunning || m_logQueue.size() > 0 ) {
     if ( m_logQueue.size() > 0 ) {
       FILE* fp = fopen(fileName,"a+");
       if (fp != NULL)
@@ -132,7 +133,7 @@ UINT CALLBACK LogThread(void* param)
         string line = GetLogLine();
         while (!line.empty())
         {
-          fprintf(fp, "%s", line.c_str());
+          fprintf(fp, "%s\n", line.c_str());
           line = GetLogLine();
         }
         fclose(fp);
@@ -185,13 +186,18 @@ void Log(const char *fmt, ...)
   SYSTEMTIME systemTime;
   GetLocalTime(&systemTime);
   char msg[5000];
-  sprintf_s(msg, 5000,"%02.2d-%02.2d-%04.4d %02.2d:%02.2d:%02.2d.%03.3d [%5x] %s\n",
+  sprintf_s(msg, 5000,"%02.2d-%02.2d-%04.4d %02.2d:%02.2d:%02.2d.%03.3d [%5x] %s",
     systemTime.wDay, systemTime.wMonth, systemTime.wYear,
     systemTime.wHour, systemTime.wMinute, systemTime.wSecond,
     systemTime.wMilliseconds,
     GetCurrentThreadId(),
     buffer);
   CAutoLock l(&m_qLock);
+
+#ifdef _DEBUG
+  DbgLog((LOG_ERROR,0,TEXT(msg)));
+#endif
+
   m_logQueue.push((string)msg);
 };
 

@@ -129,6 +129,7 @@ HRESULT CreateTempFile(LONGLONG dsize)
 	TCHAR *szTempPath = NULL;
 	DWORD cch = 0;
 
+    Log("GetTempPath");
 	// Query for the size of the temp path.
 	cch = GetTempPath(0, NULL);
 	if (cch == 0)
@@ -137,6 +138,7 @@ HRESULT CreateTempFile(LONGLONG dsize)
 	}
 
 	// Allocate a buffer for the name.
+    Log("szTempPath");
 	szTempPath = new TCHAR[cch];
 	if (szTempPath == NULL)
 	{
@@ -144,6 +146,8 @@ HRESULT CreateTempFile(LONGLONG dsize)
 	}
 
 	// Get the temp path.
+        Log("GetTempPath2");
+
 	cch = GetTempPath(cch, szTempPath);
 	if (cch == 0)
 	{
@@ -152,6 +156,7 @@ HRESULT CreateTempFile(LONGLONG dsize)
 	}
 
 	// Get the temp file name.
+        Log("GetTempFileName");
 	UINT uval = GetTempFileName(szTempPath, TEXT("DisasterHTTPFilter"), 0, m_szTempFile);
 
 	delete [] szTempPath;
@@ -161,14 +166,19 @@ HRESULT CreateTempFile(LONGLONG dsize)
       return HRESULT_FROM_WIN32(GetLastError());
 	}
 
+    Log("CloseHandle(m_hFileWrite)");
     if (m_hFileWrite != INVALID_HANDLE_VALUE) {
       CloseHandle(m_hFileWrite);
+      m_hFileWrite = INVALID_HANDLE_VALUE;
     }
+        Log("CloseHandle(m_hFileRead)");
     if (m_hFileRead != INVALID_HANDLE_VALUE) {
 	  CloseHandle(m_hFileRead);
+      m_hFileRead = INVALID_HANDLE_VALUE;
     }
 
 	// Delete old temp file to store the data.
+        Log("m_szTempFile[0] != TEXT('0')");
     if (m_szTempFile[0] != TEXT('0'))
     {
         DeleteFile(m_szTempFile);
@@ -454,7 +464,7 @@ UINT CALLBACK DownloaderThread(void* param)
     }
   }
 
-  // as we can also break the while set this to false again
+  // as we can also break the while set this to false
   m_DownloaderShouldRun = false;
   Log("DownloaderThread: finished");
   ExitThread(0);
@@ -465,39 +475,36 @@ UINT CALLBACK DownloaderThread(void* param)
 */
 CHttpStream::~CHttpStream()
 {
+    DbgLog((LOG_ERROR,0,TEXT("~CHttpStream() called")));
 	Log("~CHttpStream() called");
 
 	m_DownloaderShouldRun = false;
 
-	// give the thread the time to finish
-	//Sleep(500);
-
 	if (m_hFileWrite != INVALID_HANDLE_VALUE)
 	{
-		CloseHandle(m_hFileWrite);
-        m_hFileWrite = INVALID_HANDLE_VALUE;
+	  CloseHandle(m_hFileWrite);
 	}
 
     if (m_hFileRead != INVALID_HANDLE_VALUE)
     {
-        CloseHandle(m_hFileRead);
-        m_hFileRead = INVALID_HANDLE_VALUE;
+      CloseHandle(m_hFileRead);
     }
 
 	if (m_szTempFile[0] != TEXT('0'))
     {
-        DeleteFile(m_szTempFile);
-        m_szTempFile[0] = TEXT('0');
+      DeleteFile(m_szTempFile);
     }
 
-    if (m_hDownloader != INVALID_HANDLE_VALUE)
+    if (m_hDownloader != NULL)
     {
-       CloseHandle(m_hDownloader);
-       m_hDownloader = INVALID_HANDLE_VALUE;
+      WaitForSingleObject(m_hDownloader, INFINITE);	
+      m_hDownloader = NULL;
     }
 
+    Log("~CHttpStream() StopLogger...");
     StopLogger();
 	SAFE_DELETE_ARRAY(m_FileName);
+    DbgLog((LOG_ERROR,0,TEXT("~CHttpStream() called => END")));
 }
 
 
@@ -562,7 +569,7 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
 		  SAFE_DELETE_ARRAY(szPath);
           SAFE_DELETE_ARRAY(request);
 
-          Log("ServerPreCheck: Fehler beim senden des Requests %s!", ex);
+          Log("ServerPreCheck: Fehler beim Senden des Requests %s!", ex);
 	      return E_FAIL;
 	   }
        SAFE_DELETE_ARRAY(request);
@@ -625,7 +632,13 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
 		 return E_FAIL;
 	   }
 
+#ifdef _DEBUG
+   Log("ServerPreCheck: Create Temfile");
+#endif
    HRESULT hr = CreateTempFile(dsize);
+#ifdef _DEBUG
+   Log("ServerPreCheck: Create Temfile done");
+#endif
    if (FAILED(hr) || m_hFileWrite == INVALID_HANDLE_VALUE || m_hFileRead == INVALID_HANDLE_VALUE) {
 	   Log("ServerPreCheck: CreateTempFile failed!");
 	   return E_FAIL;
@@ -691,10 +704,17 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
     }
 
 	m_szTempFile[0] = TEXT('0');
+    // we need to set this here otherwise CreateTempFile fails when using the filter 2nd time
+    m_hFileRead = INVALID_HANDLE_VALUE;
+    m_hFileWrite = INVALID_HANDLE_VALUE;
 
-	hr = ServerPreCheck(m_FileName);
+    DbgLog((LOG_ERROR,0,TEXT("ServerPreCheck start")));
+    hr = ServerPreCheck(m_FileName);
+    DbgLog((LOG_ERROR,0,TEXT("ServerPreCheck end")));
     if (FAILED(hr))
     {
+        DbgLog((LOG_ERROR,0,TEXT("ServerPreCheck failed")));
+        Log("ServerPreCheck failed!");
         return hr;
     }
 
@@ -703,6 +723,7 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
 	// also do this - otherwise some programs who query for buffering
 	// will wait forever
 	if (m_llSeekPos) {
+      Log("Seeking is supported - start download");
  	  LONGLONG realstartpos;
       // get real first downloadpos
       israngeavail_nextstart(0, m_llDownloadLength, &realstartpos);
@@ -712,6 +733,10 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
           return hr;
       }
      }
+
+#ifdef _DEBUG
+  Log("return S_OK from Load");
+#endif
 
  return S_OK;
 }
