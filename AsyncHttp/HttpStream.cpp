@@ -802,6 +802,11 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
     Log("CHttpStream::StartRead: m_datalock.Lock done - UNLOCK WILL FOLLOW");
 #endif
 
+    if (m_hFileRead == INVALID_HANDLE_VALUE) {
+        Log("CHttpStream::StartRead: File handle is invalid - return E_FAIL");
+        m_datalock.Unlock();
+        return E_FAIL;
+    }
     pos.LowPart = pOverlapped->Offset;
     pos.HighPart = pOverlapped->OffsetHigh;
 
@@ -995,7 +1000,10 @@ HRESULT CHttpStream::EndRead(
 HRESULT CHttpStream::Cancel()
 {
     Log("CHttpStream::Cancel()");
-    m_DownloaderShouldRun = FALSE;
+
+    CHttpStream::~CHttpStream();
+
+    Log("CHttpStream::Cancelled");
     return S_OK;
 }
 
