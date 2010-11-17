@@ -20,9 +20,12 @@
 extern void Log(const char *fmt, ...);
 
 // {A713A1D8-BA12-4bb8-A05A-C3931C685E82}
-DEFINE_GUID(CLSID_AsyncHttp, 
-0xA713A1D8, 0xBA12, 0x4bb8, 0xa0, 0x5a, 0xc3, 0x93, 0x1c, 0x68, 0x5e, 0x82);
+DEFINE_GUID(CLSID_AsyncHttp, 0xA713A1D8, 0xBA12, 0x4bb8, 0xa0, 0x5a, 0xc3, 0x93, 0x1c, 0x68, 0x5e, 0x82);
 
+DEFINE_GUID(MEDIASUBTYPE_MP4, 0x08E22ADA, 0xB715, 0x45ED, 0x9D, 0x20, 0x7B, 0x87, 0x75, 0x03, 0x01, 0xD4);
+
+// {F2FAC0F1-3852-4670-AAC0-9051D400AC54}
+DEFINE_GUID(MEDIASUBTYPE_FLV, 0xf2fac0f1, 0x3852, 0x4670, 0xaa, 0xc0, 0x90, 0x51, 0xd4, 0x0, 0xac, 0x54);
 
 //************************************************************************
 //  CAsyncFilterHttp
@@ -118,6 +121,21 @@ public:
 				subtype = MEDIASUBTYPE_H264;
                 Log("subtype MEDIASUBTYPE_H264 / mkv");
 			}
+			else if ( (szExtension && _tcscmp(szExtension, TEXT(".mp4")) == 0) ||
+                 (_tcsstr(FileName, ".mp4?") > 0) ||
+                 (_tcsstr(FileName, ".mp4&&&&") > 0) )
+			{
+				subtype = MEDIASUBTYPE_MP4;
+                Log("subtype MEDIASUBTYPE_MP4 / mp4");
+			}
+			else if ( (szExtension && _tcscmp(szExtension, TEXT(".flv")) == 0) ||
+                 (_tcsstr(FileName, ".flv?") > 0) ||
+                 (_tcsstr(FileName, ".flv&&&&") > 0) )
+			{
+				subtype = MEDIASUBTYPE_FLV;
+                Log("subtype MEDIASUBTYPE_FLV / flv");
+			}
+
 			else
 			{
 				Log("subtype MEDIASUBTYPE_NULL / Wildcard");

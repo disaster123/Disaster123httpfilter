@@ -313,9 +313,37 @@ UINT CALLBACK DownloaderThread(void* param)
 	   // get message from the queue AND URL and POS from queuestring
 	   LONGLONG tmp_startpos;
        DownloaderThread_geturlpos(&url, &tmp_startpos, DownloaderThread_GetDownloaderMsg());
+       if (tmp_startpos < 0) {
+           SAFE_DELETE_ARRAY(url);
+           Log("DownloaderThread: Startpos: %I64d not OK - skipping", tmp_startpos);
+           break;
+       }
+       if (m_llDownloadLength > 0 && tmp_startpos >= m_llDownloadLength) {
+           SAFE_DELETE_ARRAY(url);
+           Log("DownloaderThread: Startpos: %I64d >= m_llDownloadLength %I64d - skipping", tmp_startpos, m_llDownloadLength);
+           break;
+       }
        // allign startpos to CHUNK_SIZE
        startpos = (LONGLONG)(tmp_startpos/CHUNK_SIZE) * CHUNK_SIZE;
-       Log("DownloaderThread: URL: %s Startpos: %I64d - Aligned Startpos: %I64d", url, tmp_startpos, startpos);
+       Log("DownloaderThread: Startpos: %I64d Al.Spos: %I64d URL: %s", tmp_startpos, startpos, url);
+       // we can only do / check the next stuff if we have a file size
+       if (m_llDownloadLength > 0) {
+         if (startpos >= m_llDownloadLength) {
+           SAFE_DELETE_ARRAY(url);
+           Log("DownloaderThread: startpos is out of range %I64d >= %I64d (startpos >= m_llDownloadLength)", startpos, m_llDownloadLength);
+           break;
+         }
+	     israngeavail_nextstart(startpos, m_llDownloadLength, &tmp_startpos);
+         if (tmp_startpos >= m_llDownloadLength) {
+           SAFE_DELETE_ARRAY(url);
+           Log("DownloaderThread: newstartpos >= m_llDownloadLength reached - cancel furthur download");
+           break;
+         }
+         if (tmp_startpos > startpos) {
+           Log("DownloaderThread: skip startpos to new chunk newstartpos %I64d -> %I64d", startpos, tmp_startpos);
+           startpos = tmp_startpos;
+         }
+       }
 
        // reinit all variables for THIS download
        DownloaderThread_initvars(startpos);
@@ -512,7 +540,7 @@ void FireDownloaderThread()
 HRESULT CHttpStream::Downloader_Start(TCHAR* szUrl, LONGLONG startpoint) 
 {
   // char msg[strlen(szUrl)+strlen(_i64toa(startpoint))+4+1];
-  Log("CHttpStream::Downloader_Start called with URL: %s Startpos: %I64d", szUrl, startpoint);
+  Log("CHttpStream::Downloader_Start Startpos: %I64d URL: %s", startpoint, szUrl);
 
   char msg[500];
   sprintf_s(msg, sizeof(msg), "%s || %I64d", szUrl, startpoint);
@@ -576,6 +604,9 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
 
        Log("ServerPreCheck: Filesize: %I64d Statuscode: %d", dsize, statuscode);
 
+       if (statuscode == 301) {
+         statuscode = 302;
+       }
 	   if (statuscode != 302 && dsize <= 0) {
 	      closesocket(Socket);
           SAFE_DELETE_ARRAY(szHost);
@@ -641,11 +672,20 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
 
    // Request the start and END
    runtime = GetSystemTimeInMS();
-   add_to_downloadqueue(0);
-   WaitForSize(0, (256*1024));
+   #ifdef _DEBUG
+     Log("ServerPreCheck: added queue download 0");
+   #endif
+   add_to_downloadqueue( 0 );
+   WaitForSize(0, min( (256*1024), dsize) );
+   #ifdef _DEBUG
+     Log("ServerPreCheck: wait for size: %I64d - DONE", min( (256*1024), dsize) );
+   #endif
    if (m_llSeekPos) {
-     add_to_downloadqueue(dsize-(256*1024));
-     WaitForSize(dsize-(256*1024), dsize);
+     add_to_downloadqueue( max(0, dsize-(256*1024) ) );
+     WaitForSize( max(0, dsize-(256*1024) ) , dsize);
+     #ifdef _DEBUG
+       Log("ServerPreCheck: wait for size: %I64d - DONE", max(0, dsize-(256*1024) ) );
+     #endif
    }
    Log("\n\nServerPreCheck: PREBUFFER of file done\n");
 
@@ -722,17 +762,21 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
 	// the download is still running from the precheck
 	// also do this - otherwise some programs who query for buffering
 	// will wait forever
-	if (m_llSeekPos) {
+    if (m_llSeekPos) {
       Log("Seeking is supported - start download");
  	  LONGLONG realstartpos;
       // get real first downloadpos
       israngeavail_nextstart(0, m_llDownloadLength, &realstartpos);
-      hr = Downloader_Start(m_FileName, realstartpos);
-      if (FAILED(hr))
-      {
+      if (realstartpos > 0 && realstartpos < m_llDownloadLength) {
+        hr = Downloader_Start(m_FileName, realstartpos);
+        if (FAILED(hr))
+        {
           return hr;
+        }
+      } else {
+        Log("Download not needed - file already available");
       }
-     }
+    }
 
 #ifdef _DEBUG
   Log("return S_OK from Load");
@@ -804,6 +848,11 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
 
     if (m_hFileRead == INVALID_HANDLE_VALUE) {
         Log("CHttpStream::StartRead: File handle is invalid - return E_FAIL");
+        m_datalock.Unlock();
+        return E_FAIL;
+    }
+    if (dwBytesToRead == 0) {
+        Log("CHttpStream::StartRead: dwBytesToRead is 0 - return E_FAIL");
         m_datalock.Unlock();
         return E_FAIL;
     }
