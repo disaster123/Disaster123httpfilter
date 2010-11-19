@@ -555,7 +555,7 @@ HRESULT CHttpStream::Downloader_Start(TCHAR* szUrl, LONGLONG startpoint)
   return S_OK;
 };
 
-HRESULT CHttpStream::ServerPreCheck(const char* url)
+HRESULT CHttpStream::ServerPreCheck(const char* url, string& filetype)
 {
       int   Socket;
 	  char *szHost = NULL;
@@ -601,10 +601,12 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
        int statuscode = 999;
        string headers;
        GetHTTPHeaders(Socket, &dsize, &statuscode, headers);
+       GetValueFromHeader(headers.c_str(), "Content-Type", filetype);
 
-       Log("ServerPreCheck: Filesize: %I64d Statuscode: %d", dsize, statuscode);
+       Log("ServerPreCheck: Filesize: %I64d Statuscode: %d Filetype: %s", dsize, statuscode, filetype.c_str());
 
        if (statuscode == 301) {
+         // map 301 to 302 for us - it doesn't matter if the redirect is permanent or temporary
          statuscode = 302;
        }
 	   if (statuscode != 302 && dsize <= 0) {
@@ -629,20 +631,20 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
           strcpy(m_FileName, newurl.c_str());
 
           Log("\n\nServerPreCheck: REDIRECTED to %s!\n", newurl.c_str());
-          return ServerPreCheck(newurl.c_str());
+          return ServerPreCheck(newurl.c_str(), filetype);
        }
        else if (statuscode == 200 || statuscode == 416) {
-            Log("\n\nServerPreCheck: SERVER DOES NOT SUPPORT SEEKING!\n");
-            m_llSeekPos = FALSE;
+          Log("\n\nServerPreCheck: SERVER DOES NOT SUPPORT SEEKING!\n");
+          m_llSeekPos = FALSE;
        }
        else if (statuscode == 206) {
             m_llSeekPos = TRUE;
        }
        else {
-            Log("\n\nServerPreCheck: SERVER NOT SUPPORTED! Code: %d\n", statuscode);
-	        closesocket(Socket);
-            SAFE_DELETE_ARRAY(szHost);
-	        SAFE_DELETE_ARRAY(szPath);
+          Log("\n\nServerPreCheck: SERVER NOT SUPPORTED! Code: %d\n", statuscode);
+	      closesocket(Socket);
+          SAFE_DELETE_ARRAY(szHost);
+	      SAFE_DELETE_ARRAY(szPath);
           return E_FAIL;
 	   }
 
@@ -699,7 +701,7 @@ HRESULT CHttpStream::ServerPreCheck(const char* url)
    return S_OK;
 }
 
-HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName) 
+HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName, string& filetype) 
 {
     HRESULT hr;
     Log("CHttpStream::Initialize File: %s", lpszFileName);
@@ -749,7 +751,7 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
     }
 
     DbgLog((LOG_ERROR,0,TEXT("ServerPreCheck start")));
-    hr = ServerPreCheck(m_FileName);
+    hr = ServerPreCheck(m_FileName, filetype);
     DbgLog((LOG_ERROR,0,TEXT("ServerPreCheck end")));
     if (FAILED(hr))
     {
@@ -778,9 +780,9 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName)
       }
     }
 
-#ifdef _DEBUG
+ #ifdef _DEBUG
   Log("return S_OK from Load");
-#endif
+ #endif
 
  return S_OK;
 }

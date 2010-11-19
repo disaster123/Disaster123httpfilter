@@ -94,48 +94,62 @@ public:
         /*  Check the file type */
         CMediaType cmt;
 		cmt.InitMediaType();
+
+        string filetype = "";
+		HRESULT hr = m_FileStream.Initialize(OLE2T(lpwszFileName), filetype);
+        Log("asynchttp: URL Filetype: %s", filetype.c_str());
+        if (FAILED(hr))
+		{
+			Log("asynchttp: Initialisation failed! Cannot load URL!");
+			return hr;
+		}
+
         if (NULL == pmt) 
 		{
 			GUID subtype = MEDIASUBTYPE_NULL;
 			TCHAR *szExtension = PathFindExtension(OLE2T(lpwszFileName));
             TCHAR *FileName = OLE2T(lpwszFileName);
 
-            if ( (szExtension && _tcscmp(szExtension, TEXT(".avi")) == 0) ||
+            if ( (filetype.compare("video/x-msvideo") == 0) || 
+                 (szExtension && _tcscmp(szExtension, TEXT(".avi")) == 0) ||
                  (_tcsstr(FileName, ".avi?") > 0) ||
                  (_tcsstr(FileName, ".avi&&&&") > 0) )
 			{
 				subtype = MEDIASUBTYPE_Avi;
                 Log("subtype MEDIASUBTYPE_Avi / avi");
 			}
-			else if ( (szExtension && _tcscmp(szExtension, TEXT(".divx")) == 0) ||
-                 (_tcsstr(FileName, ".divx?") > 0) ||
-                 (_tcsstr(FileName, ".divx&&&&") > 0) )
+			else if ( (filetype.compare("video/divx") == 0) || 
+                      (szExtension && _tcscmp(szExtension, TEXT(".divx")) == 0) ||
+                      (_tcsstr(FileName, ".divx?") > 0) ||
+                      (_tcsstr(FileName, ".divx&&&&") > 0) )
 			{
 				subtype = MEDIASUBTYPE_Avi;
                 Log("subtype MEDIASUBTYPE_Avi / divx");
 			}
-			else if ( (szExtension && _tcscmp(szExtension, TEXT(".mkv")) == 0) ||
-                 (_tcsstr(FileName, ".mkv?") > 0) ||
-                 (_tcsstr(FileName, ".mkv&&&&") > 0) )
+			else if ( (filetype.compare("video/x-matroska") == 0) || 
+                      (szExtension && _tcscmp(szExtension, TEXT(".mkv")) == 0) ||
+                      (_tcsstr(FileName, ".mkv?") > 0) ||
+                      (_tcsstr(FileName, ".mkv&&&&") > 0) )
 			{
 				subtype = MEDIASUBTYPE_H264;
                 Log("subtype MEDIASUBTYPE_H264 / mkv");
 			}
-			else if ( (szExtension && _tcscmp(szExtension, TEXT(".mp4")) == 0) ||
-                 (_tcsstr(FileName, ".mp4?") > 0) ||
-                 (_tcsstr(FileName, ".mp4&&&&") > 0) )
+			else if ( (filetype.compare("video/mp4") == 0) || 
+                      (szExtension && _tcscmp(szExtension, TEXT(".mp4")) == 0) ||
+                      (_tcsstr(FileName, ".mp4?") > 0) ||
+                      (_tcsstr(FileName, ".mp4&&&&") > 0) )
 			{
 				subtype = MEDIASUBTYPE_MP4;
                 Log("subtype MEDIASUBTYPE_MP4 / mp4");
 			}
-			else if ( (szExtension && _tcscmp(szExtension, TEXT(".flv")) == 0) ||
-                 (_tcsstr(FileName, ".flv?") > 0) ||
-                 (_tcsstr(FileName, ".flv&&&&") > 0) )
+			else if ( (filetype.compare("video/x-flv") == 0) || 
+                      (szExtension && _tcscmp(szExtension, TEXT(".flv")) == 0) ||
+                      (_tcsstr(FileName, ".flv?") > 0) ||
+                      (_tcsstr(FileName, ".flv&&&&") > 0) )
 			{
 				subtype = MEDIASUBTYPE_FLV;
                 Log("subtype MEDIASUBTYPE_FLV / flv");
 			}
-
 			else
 			{
 				Log("subtype MEDIASUBTYPE_NULL / Wildcard");
@@ -153,15 +167,7 @@ public:
 			}
         }
 
-		HRESULT hr = m_FileStream.Initialize(OLE2T(lpwszFileName));
-		if (FAILED(hr))
-		{
-			Log("asynchttp: Initialisation failed! Cannot load URL!");
-			return hr;
-		}
-
         m_pFileName = new WCHAR[cch];
-
         if (m_pFileName!=NULL)
 			CopyMemory(m_pFileName, lpwszFileName, cch*sizeof(WCHAR));
 

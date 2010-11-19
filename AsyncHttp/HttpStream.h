@@ -43,7 +43,7 @@ public:
 
 	~CHttpStream();
 
-	HRESULT Initialize(LPCTSTR lpszFileName);
+	HRESULT Initialize(LPCTSTR lpszFileName, string& filetype);
     HRESULT add_to_downloadqueue(LONGLONG startpos);
     void WaitForSize(LONGLONG start, LONGLONG end);
 
@@ -82,7 +82,7 @@ public:
 	void OnError(DWORD dwErr); 
 
 	HRESULT Downloader_Start(TCHAR* szUrl, LONGLONG startpoint);
-	HRESULT ServerPreCheck(const char* url);
+	HRESULT ServerPreCheck(const char* url, string& filetype);
 
 private:
 
