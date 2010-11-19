@@ -143,6 +143,7 @@ public:
                 Log("subtype MEDIASUBTYPE_MP4 / mp4");
 			}
 			else if ( (filetype.compare("video/x-flv") == 0) || 
+                      (filetype.compare("video/flv") == 0) ||
                       (szExtension && _tcscmp(szExtension, TEXT(".flv")) == 0) ||
                       (_tcsstr(FileName, ".flv?") > 0) ||
                       (_tcsstr(FileName, ".flv&&&&") > 0) )
