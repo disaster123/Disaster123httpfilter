@@ -132,8 +132,11 @@ int GetHostAndPath(const char *szUrl, char **pszHost, char **pszPath, int *pszPo
    return 1;
 }
 
-std::runtime_error CreateSocketError()
+std::runtime_error CreateSocketError(char *mess)
 {
+    if (strlen(mess) > 0) {
+        Log("CreateSocketError: %s", mess);
+    }
     int error = WSAGetLastError();
     char* msg = NULL;
     if(FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
@@ -240,9 +243,18 @@ char* buildrequeststring(char* szHost, int szPort, char* szPath, LONGLONG startp
 }
 
 void GetLineFromSocket(int socket, string& line) {
-	line.clear();
     char c;
-    while (recv(socket, &c, 1, 0) > 0)
+    FD_SET fdSet;
+    struct timeval tval;
+    tval.tv_sec = 15;
+    tval.tv_usec = 0;
+
+    line.clear();
+
+    FD_ZERO(&fdSet); // Inhalt leeren
+    FD_SET(socket,&fdSet); // Den Socket der verbindungen annimmt hinzufügen
+
+    while ( (select(0,&fdSet,NULL,NULL,&tval) > 0) && (recv(socket, &c, 1, 0) > 0) )
     {
         if(c == '\r') {
             continue;
@@ -253,7 +265,7 @@ void GetLineFromSocket(int socket, string& line) {
         }
         line += c;
     }
-    throw CreateSocketError(); 
+    throw CreateSocketError("select or recv timeout after 15s"); 
 }
 
 void GetHTTPHeaders(int Socket, LONGLONG* filesize, int* statuscode, string& headers)
@@ -295,8 +307,9 @@ void GetHTTPHeaders(int Socket, LONGLONG* filesize, int* statuscode, string& hea
                // Content-Range: bytes 1555775744-1555808025/1555808026
 			   sscanf(HeaderLine.c_str(), "Content-Length: %I64d", &contlength);
 			   sscanf(HeaderLine.c_str(), "Content-Range: bytes %I64d-%I64d/%I64d", &tmp1, &tmp2, &contrange);
-		   } catch(exception& ex) {
+		   } catch(exception ex) {
 			   Log("GetHTTPHeaders: Cannot get Headerlines: %s", ex);
+               break;
 		   }
 	   }
 	   // Loop was running too long but assign values
@@ -305,16 +318,20 @@ void GetHTTPHeaders(int Socket, LONGLONG* filesize, int* statuscode, string& hea
 
 void send_to_socket(int socket, const char* const buf, const int size)
 {
+    ULONGLONG time_start = GetSystemTimeInMS();
     int bytesSent = 0; // Anzahl Bytes die wir bereits vom Buffer gesendet haben
     do
     {
         int result = send(socket, buf + bytesSent, size - bytesSent, 0);
         if(result < 0) // Wenn send einen Wert < 0 zurück gibt deutet dies auf einen Fehler hin.
         {
-            throw CreateSocketError();
+            throw CreateSocketError("");
         }
         bytesSent += result;
-    } while(bytesSent < size);
+    } while( bytesSent < size && (time_start+2000 < GetSystemTimeInMS()) );
+    if (bytesSent < size) {
+        throw std::runtime_error("socket connection too slow");
+    }
 }
 
 HRESULT GetValueFromHeader(const char* head, const char* key, string& value)

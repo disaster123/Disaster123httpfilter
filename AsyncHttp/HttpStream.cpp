@@ -311,21 +311,22 @@ UINT CALLBACK DownloaderThread(void* param)
 #endif
 
 	   // get message from the queue AND URL and POS from queuestring
-	   LONGLONG tmp_startpos;
-       DownloaderThread_geturlpos(&url, &tmp_startpos, DownloaderThread_GetDownloaderMsg());
-       if (tmp_startpos < 0) {
+	   LONGLONG startpos_orig = -1;
+       LONGLONG new_startpos = -1;
+       DownloaderThread_geturlpos(&url, &startpos_orig, DownloaderThread_GetDownloaderMsg());
+       if (startpos_orig < 0) {
            SAFE_DELETE_ARRAY(url);
-           Log("DownloaderThread: Startpos: %I64d not OK - skipping", tmp_startpos);
+           Log("DownloaderThread: Startpos: %I64d not OK - skipping", startpos_orig);
            break;
        }
-       if (m_llDownloadLength > 0 && tmp_startpos >= m_llDownloadLength) {
+       if (m_llDownloadLength > 0 && startpos_orig >= m_llDownloadLength) {
            SAFE_DELETE_ARRAY(url);
-           Log("DownloaderThread: Startpos: %I64d >= m_llDownloadLength %I64d - skipping", tmp_startpos, m_llDownloadLength);
+           Log("DownloaderThread: Startpos: %I64d >= m_llDownloadLength %I64d - skipping", startpos_orig, m_llDownloadLength);
            break;
        }
        // allign startpos to CHUNK_SIZE
-       startpos = (LONGLONG)(tmp_startpos/CHUNK_SIZE) * CHUNK_SIZE;
-       Log("DownloaderThread: Startpos: %I64d Al.Spos: %I64d URL: %s", tmp_startpos, startpos, url);
+       startpos = (LONGLONG)(startpos_orig/CHUNK_SIZE) * CHUNK_SIZE;
+       Log("DownloaderThread: Startpos: %I64d Al.Spos: %I64d URL: %s", startpos_orig, startpos, url);
        // we can only do / check the next stuff if we have a file size
        if (m_llDownloadLength > 0) {
          if (startpos >= m_llDownloadLength) {
@@ -333,15 +334,15 @@ UINT CALLBACK DownloaderThread(void* param)
            Log("DownloaderThread: startpos is out of range %I64d >= %I64d (startpos >= m_llDownloadLength)", startpos, m_llDownloadLength);
            break;
          }
-	     israngeavail_nextstart(startpos, m_llDownloadLength, &tmp_startpos);
-         if (tmp_startpos >= m_llDownloadLength) {
+	     israngeavail_nextstart(startpos, m_llDownloadLength, &new_startpos);
+         if (new_startpos >= m_llDownloadLength) {
            SAFE_DELETE_ARRAY(url);
            Log("DownloaderThread: newstartpos >= m_llDownloadLength reached - cancel furthur download");
            break;
          }
-         if (tmp_startpos > startpos) {
-           Log("DownloaderThread: skip startpos to new chunk newstartpos %I64d -> %I64d", startpos, tmp_startpos);
-           startpos = tmp_startpos;
+         if (new_startpos > startpos) {
+           Log("DownloaderThread: skip startpos to new chunk newstartpos %I64d -> %I64d", startpos, new_startpos);
+           startpos = new_startpos;
          }
        }
 
@@ -371,7 +372,7 @@ UINT CALLBACK DownloaderThread(void* param)
 
 	   try {
   	      send_to_socket(Socket, request, strlen(request));
-	   } catch(exception& ex) {
+	   } catch(exception ex) {
           Log("DownloaderThread: Fehler beim senden des Requests %s!", ex);
           SAFE_DELETE_ARRAY(request);
 		  break;
@@ -380,7 +381,15 @@ UINT CALLBACK DownloaderThread(void* param)
 
        int statuscode = 999;
        string headers;
-       GetHTTPHeaders(Socket, &m_llDownloadLength, &statuscode, headers);
+       LONGLONG NULLL;
+       GetHTTPHeaders(Socket, &NULLL, &statuscode, headers);
+       if (statuscode != 206 && statuscode != 200) {
+           Log("DownloaderThread: Statuscode not OK: %d - retry download", statuscode);
+           char msg[500];
+           sprintf_s(msg, sizeof(msg), "%s || %I64d", url, startpos_orig);
+           m_DownloaderQueue.push((string)msg);
+           continue;
+       }
 
        Log("DownloaderThread: Headers complete Downloadsize: %I64d", m_llDownloadLength);
 
@@ -487,6 +496,31 @@ UINT CALLBACK DownloaderThread(void* param)
   ExitThread(0);
 }
 
+
+void FireDownloaderThread()
+{
+  UINT id;
+  m_hDownloader = (HANDLE)_beginthreadex(NULL, 0, DownloaderThread, 0, 0, &id);
+}
+
+HRESULT CHttpStream::Downloader_Start(TCHAR* szUrl, LONGLONG startpoint) 
+{
+  // char msg[strlen(szUrl)+strlen(_i64toa(startpoint))+4+1];
+  Log("Downloader_Start Startpos: %I64d URL: %s", startpoint, szUrl);
+
+  char msg[500];
+  sprintf_s(msg, sizeof(msg), "%s || %I64d", szUrl, startpoint);
+  m_DownloaderQueue.push((string)msg);
+
+  if (!m_hDownloader || !m_DownloaderShouldRun) 
+  {
+    m_DownloaderShouldRun = true;
+    FireDownloaderThread();
+  }
+
+  return S_OK;
+};
+
 /*
  This is the stuff the main real class holds (CHTTPStream) thread needs and holds
 */
@@ -530,31 +564,6 @@ CHttpStream::~CHttpStream()
     DbgLog((LOG_ERROR,0,TEXT("~CHttpStream() called => END")));
 }
 
-
-void FireDownloaderThread()
-{
-  UINT id;
-  m_hDownloader = (HANDLE)_beginthreadex(NULL, 0, DownloaderThread, 0, 0, &id);
-}
-
-HRESULT CHttpStream::Downloader_Start(TCHAR* szUrl, LONGLONG startpoint) 
-{
-  // char msg[strlen(szUrl)+strlen(_i64toa(startpoint))+4+1];
-  Log("CHttpStream::Downloader_Start Startpos: %I64d URL: %s", startpoint, szUrl);
-
-  char msg[500];
-  sprintf_s(msg, sizeof(msg), "%s || %I64d", szUrl, startpoint);
-  m_DownloaderQueue.push((string)msg);
-
-  if (!m_hDownloader || !m_DownloaderShouldRun) 
-  {
-    m_DownloaderShouldRun = true;
-    FireDownloaderThread();
-  }
-
-  return S_OK;
-};
-
 HRESULT CHttpStream::ServerPreCheck(const char* url, string& filetype)
 {
       int   Socket;
@@ -586,7 +595,7 @@ HRESULT CHttpStream::ServerPreCheck(const char* url, string& filetype)
 
 	   try {
   	      send_to_socket(Socket, request, strlen(request));
-	   } catch(exception& ex) {
+	   } catch(exception ex) {
 	      closesocket(Socket);
 		  SAFE_DELETE_ARRAY(szHost);
 		  SAFE_DELETE_ARRAY(szPath);
@@ -652,6 +661,7 @@ HRESULT CHttpStream::ServerPreCheck(const char* url, string& filetype)
        SAFE_DELETE_ARRAY(szHost);
 	   SAFE_DELETE_ARRAY(szPath);
 
+       m_llDownloadLength = dsize;
        Log("\n\nServerPreCheck: SERVER OK => SUPPORTED!\n");
 
 	   runtime = GetSystemTimeInMS()-runtime;
@@ -769,7 +779,7 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName, string& filetype)
  	  LONGLONG realstartpos;
       // get real first downloadpos
       israngeavail_nextstart(0, m_llDownloadLength, &realstartpos);
-      if (realstartpos > 0 && realstartpos < m_llDownloadLength) {
+      if (realstartpos >= 0 && realstartpos < m_llDownloadLength) {
         hr = Downloader_Start(m_FileName, realstartpos);
         if (FAILED(hr))
         {
