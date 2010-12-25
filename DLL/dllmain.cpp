@@ -178,10 +178,11 @@ void Log(const char *fmt, ...)
   va_list ap;
   va_start(ap, fmt);
 
-  CAutoLock logLock(&lock);
   if (m_bLoggerDisable) {
     return;
   }
+
+  CAutoLock logLock(&lock);
   if (!m_hLogger) 
   {
     m_bLoggerRunning = true;
