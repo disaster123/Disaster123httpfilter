@@ -29,7 +29,7 @@
 using namespace std;
 
 const WCHAR *szAsyncHttp = L"Disaster123's MP Alternate Source Filter";
-const char *VERSION = "0.20";
+const char *VERSION = "0.21";
 
 //
 // Setup data for filter registration
@@ -102,6 +102,7 @@ void LogRotate()
 CCritSec m_qLock;
 std::queue<std::string> m_logQueue;
 BOOL m_bLoggerRunning;
+BOOL m_bLoggerDisable = false;
 HANDLE m_hLogger = NULL;
 
 string GetLogLine()
@@ -137,6 +138,9 @@ UINT CALLBACK LogThread(void* param)
           line = GetLogLine();
         }
         fclose(fp);
+      } else {
+        m_bLoggerDisable = true;
+        break;
       }
     }
     Sleep(500);
@@ -149,6 +153,9 @@ UINT CALLBACK LogThread(void* param)
 void StartLogger()
 {
   UINT id;
+  if (m_bLoggerDisable) {
+    return;
+  }
   LogRotate();
   m_hLogger = (HANDLE)_beginthreadex(NULL, 0, LogThread, 0, 0, &id);
   SetThreadPriority(m_hLogger, THREAD_PRIORITY_BELOW_NORMAL);
@@ -172,6 +179,9 @@ void Log(const char *fmt, ...)
   va_start(ap, fmt);
 
   CAutoLock logLock(&lock);
+  if (m_bLoggerDisable) {
+    return;
+  }
   if (!m_hLogger) 
   {
     m_bLoggerRunning = true;
