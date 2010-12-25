@@ -72,9 +72,8 @@ BOOL ssupp_waitall = TRUE;
 */
 BOOL israngeavail(LONGLONG start, LONGLONG length) 
 {
-    // remove
     int chunkstart = getchunkpos(start);
-    // remove one byte - so that we don't reach strange barries
+    // remove one byte - so that we don't reach strange barriers
     int chunkend = getchunkpos(start+length-1);
 
     if (chunkend > (int)CHUNK_V.size()) {
