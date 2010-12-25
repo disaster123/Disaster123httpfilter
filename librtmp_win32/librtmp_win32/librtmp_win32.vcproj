@@ -41,14 +41,16 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
+				WholeProgramOptimization="true"
 				AdditionalIncludeDirectories=".;&quot;..\polarssl-0.13.1\include\&quot;;..\zlib\"
 				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;LIBRTMP_WIN32_EXPORTS;USE_POLARSSL"
-				MinimalRebuild="true"
-				BasicRuntimeChecks="3"
+				MinimalRebuild="false"
+				BasicRuntimeChecks="0"
 				RuntimeLibrary="3"
+				EnableFunctionLevelLinking="true"
 				UsePrecompiledHeader="0"
 				WarningLevel="3"
-				DebugInformationFormat="4"
+				DebugInformationFormat="3"
 				CompileAs="1"
 			/>
 			<Tool
@@ -62,10 +64,15 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="..\zlib\zlib.lib"
-				LinkIncremental="2"
+				AdditionalDependencies="..\zlib\zlib.lib winmm.lib"
+				LinkIncremental="1"
+				IgnoreDefaultLibraryNames="LIBCMTD"
+				ModuleDefinitionFile="librtmp.def"
 				GenerateDebugInformation="true"
 				SubSystem="2"
+				OptimizeReferences="2"
+				EnableCOMDATFolding="2"
+				LinkTimeCodeGeneration="1"
 				TargetMachine="1"
 			/>
 			<Tool
