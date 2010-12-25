@@ -41,7 +41,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories=".;&quot;..\..\..\polarssl-0.13.1\include\&quot;;..\..\..\zlib\"
+				AdditionalIncludeDirectories=".;&quot;..\polarssl-0.13.1\include\&quot;;..\zlib\"
 				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;LIBRTMP_WIN32_EXPORTS;USE_POLARSSL"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -62,7 +62,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="..\..\..\zlib\zlib.lib"
+				AdditionalDependencies="..\zlib\zlib.lib"
 				LinkIncremental="2"
 				GenerateDebugInformation="true"
 				SubSystem="2"
@@ -117,7 +117,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories=".;&quot;..\..\..\polarssl-0.13.1\include\&quot;;..\..\..\zlib\"
+				AdditionalIncludeDirectories=".;&quot;..\polarssl-0.13.1\include\&quot;;..\zlib\"
 				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;LIBRTMP_WIN32_EXPORTS;USE_POLARSSL;_CRT_SECURE_NO_WARNINGS"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
@@ -136,7 +136,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="..\..\..\zlib\zlib.lib winmm.lib"
+				AdditionalDependencies="..\zlib\zlib.lib winmm.lib"
 				LinkIncremental="1"
 				IgnoreDefaultLibraryNames="LIBCMTD"
 				ModuleDefinitionFile="librtmp.def"
@@ -178,23 +178,23 @@
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
 			<File
-				RelativePath="..\..\librtmp\amf.c"
+				RelativePath="..\librtmp\amf.c"
 				>
 			</File>
 			<File
-				RelativePath="..\..\librtmp\hashswf.c"
+				RelativePath="..\librtmp\hashswf.c"
 				>
 			</File>
 			<File
-				RelativePath="..\..\librtmp\log.c"
+				RelativePath="..\librtmp\log.c"
 				>
 			</File>
 			<File
-				RelativePath="..\..\librtmp\parseurl.c"
+				RelativePath="..\librtmp\parseurl.c"
 				>
 			</File>
 			<File
-				RelativePath="..\..\librtmp\rtmp.c"
+				RelativePath="..\librtmp\rtmp.c"
 				>
 			</File>
 		</Filter>
@@ -204,39 +204,39 @@
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
 			<File
-				RelativePath="..\..\librtmp\amf.h"
+				RelativePath="..\librtmp\amf.h"
 				>
 			</File>
 			<File
-				RelativePath="..\..\librtmp\bytes.h"
+				RelativePath="..\librtmp\bytes.h"
 				>
 			</File>
 			<File
-				RelativePath="..\..\librtmp\dh.h"
+				RelativePath="..\librtmp\dh.h"
 				>
 			</File>
 			<File
-				RelativePath="..\..\librtmp\dhgroups.h"
+				RelativePath="..\librtmp\dhgroups.h"
 				>
 			</File>
 			<File
-				RelativePath="..\..\librtmp\handshake.h"
+				RelativePath="..\librtmp\handshake.h"
 				>
 			</File>
 			<File
-				RelativePath="..\..\librtmp\http.h"
+				RelativePath="..\librtmp\http.h"
 				>
 			</File>
 			<File
-				RelativePath="..\..\librtmp\log.h"
+				RelativePath="..\librtmp\log.h"
 				>
 			</File>
 			<File
-				RelativePath="..\..\librtmp\rtmp.h"
+				RelativePath="..\librtmp\rtmp.h"
 				>
 			</File>
 			<File
-				RelativePath="..\..\librtmp\rtmp_sys.h"
+				RelativePath="..\librtmp\rtmp_sys.h"
 				>
 			</File>
 		</Filter>
