@@ -32,6 +32,7 @@
 #include "..\Base\asyncio.h"
 #include "HttpStream.h"
 #include "..\Base\HTTPUtilities.h"
+//#include "..\librtmp_win32\librtmp\rtmp.h"
 
 #include "AutoLockDebug.h"
 #include "..\Base\alloctracing.h"
@@ -109,7 +110,6 @@ void israngeavail_nextstart(LONGLONG start, LONGLONG end, LONGLONG* newstartpos)
             break;
         }
     }
-
 }
 
 string DownloaderThread_GetDownloaderMsg()
