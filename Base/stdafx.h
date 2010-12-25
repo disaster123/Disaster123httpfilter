@@ -10,6 +10,7 @@
 #pragma warning(disable:4995)
 #pragma warning(disable:4996)
 
+#define STRSAFE_USE_SECURE_CRT 1
 #define WIN32_LEAN_AND_MEAN
 #define _ATL_CSTRING_EXPLICIT_CONSTRUCTORS
 
