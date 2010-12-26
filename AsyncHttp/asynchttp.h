@@ -38,7 +38,7 @@ class CAsyncFilterHttp : public CAsyncReader, public IFileSourceFilter, public I
 {
 public:
     CAsyncFilterHttp(LPUNKNOWN pUnk, HRESULT *phr) :
-        CAsyncReader(NAME("CSSR SPriebe HTTP Filter"), pUnk, CLSID_AsyncHttp, &m_FileStream, phr),
+        CAsyncReader(NAME("Disaster123's MP HTTP Filter"), pUnk, CLSID_AsyncHttp, &m_FileStream, phr),
         m_pFileName(NULL),
         m_pbData(NULL)
     {
@@ -86,7 +86,6 @@ public:
 		USES_CONVERSION;
         CheckPointer(lpwszFileName, E_POINTER);
 
-        // lstrlenW is one of the few Unicode functions that works on win95
         int cch = lstrlenW(lpwszFileName) + 1;
 
         CAutoLock lck(&m_csFilter);
@@ -223,8 +222,6 @@ public:
       }
 
       HRESULT hr = m_FileStream.Length(&llLength, &llAvailable, TRUE);
-      // Log("QueryProgress m_FileStream.Length done!!! %I64d %I64d", llLength, llAvailable);
-      
       if (SUCCEEDED(hr)) {
           *pllTotal = llLength;
           *pllCurrent = llAvailable;
@@ -240,9 +237,7 @@ public:
 
     STDMETHODIMP AbortOperation()
     {
-	   //Log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA AbortOperation called");
        return m_FileStream.Cancel();
-	   //return E_NOTIMPL;
     }
 
 private:

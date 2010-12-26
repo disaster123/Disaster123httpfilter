@@ -32,7 +32,6 @@
 #include "..\Base\asyncio.h"
 #include "HttpStream.h"
 #include "..\Base\HTTPUtilities.h"
-//#include "..\librtmp_win32\librtmp\rtmp.h"
 
 #include "AutoLockDebug.h"
 #include "..\Base\alloctracing.h"
@@ -49,22 +48,22 @@ static CCritSec m_CritSec;
 static CCritSec g_CritSec;
 
 std::queue<std::string> m_DownloaderQueue;
-TCHAR		m_szTempFile[MAX_PATH]; // Name of the temp file
-BOOL        m_DownloaderShouldRun = FALSE;
-HANDLE      m_hDownloader = NULL;
-HANDLE		m_hFileWrite = INVALID_HANDLE_VALUE;   // File handle for writing to the temp file.
-HANDLE		m_hFileRead = INVALID_HANDLE_VALUE;    // File handle for reading from the temp file.
-LONGLONG	m_llDownloadLength = -1;
-LONGLONG	m_llDownloadStart  = -1;
-LONGLONG	m_llDownloadPos  = -1;
-LONGLONG	m_llDownloadedBytes  = -1;
-LONGLONG    m_llBytesRequested;     // Size of most recent read request.
-BOOL        m_llSeekPos;
-float       m_lldownspeed;
-vector<BOOL> CHUNK_V; // this is the HAVING CHUNK Vector :-)
-string      add_headers;
-vector<int> winversion;
-BOOL ssupp_waitall = TRUE;
+TCHAR		      m_szTempFile[MAX_PATH]; // Name of the temp file
+BOOL          m_DownloaderShouldRun = FALSE;
+HANDLE        m_hDownloader = NULL;
+HANDLE		    m_hFileWrite = INVALID_HANDLE_VALUE;   // File handle for writing to the temp file.
+HANDLE		    m_hFileRead = INVALID_HANDLE_VALUE;    // File handle for reading from the temp file.
+LONGLONG	    m_llDownloadLength = -1;
+LONGLONG	    m_llDownloadStart  = -1;
+LONGLONG	    m_llDownloadPos  = -1;
+LONGLONG	    m_llDownloadedBytes  = -1;
+LONGLONG      m_llBytesRequested;     // Size of most recent read request.
+BOOL          m_llSeekPos;
+float         m_lldownspeed;
+vector<BOOL>  CHUNK_V; // this is the HAVING CHUNK Vector :-)
+string        add_headers;
+vector<int>   winversion;
+BOOL          ssupp_waitall = TRUE;
 #pragma endregion
 
 /*
@@ -78,7 +77,7 @@ BOOL israngeavail(LONGLONG start, LONGLONG length)
 
     if (chunkend > (int)CHUNK_V.size()) {
         Log("israngeavail: !!! chunkend is bigger than CHUNK Vector");
-         return FALSE;
+        return FALSE;
     }
     int i;
     for (i = chunkstart; i <= chunkend; i++) {
@@ -712,24 +711,24 @@ HRESULT CHttpStream::ServerPreCheck(const char* url, string& filetype)
 
 HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName, string& filetype) 
 {
-    HRESULT hr;
-    Log("CHttpStream::Initialize File: %s", lpszFileName);
-    if (initWSA() != 0) {
-        Log("CHttpStream::Initialize: Couldn't init WSA");
-        return E_FAIL;
-    }
+  HRESULT hr;
+  Log("CHttpStream::Initialize File: %s", lpszFileName);
+  if (initWSA() != 0) {
+    Log("CHttpStream::Initialize: Couldn't init WSA");
+    return E_FAIL;
+  }
 
-    m_llDownloadLength = -1;
-    m_llDownloadStart  = -1;
-    m_llDownloadPos  = -1;
-    m_llDownloadedBytes  = 0;
-    m_llBytesRequested = 0;
-    m_llSeekPos = TRUE;
-    m_lldownspeed = 0.05F;
-    CHUNK_V.clear();
-    add_headers = "";
-    winversion.clear();
-    ssupp_waitall = TRUE;
+  m_llDownloadLength = -1;
+  m_llDownloadStart  = -1;
+  m_llDownloadPos  = -1;
+  m_llDownloadedBytes  = 0;
+  m_llBytesRequested = 0;
+  m_llSeekPos = TRUE;
+  m_lldownspeed = 0.05F;
+  CHUNK_V.clear();
+  add_headers = "";
+  winversion.clear();
+  ssupp_waitall = TRUE;
 	m_szTempFile[0] = TEXT('0');
 
 	GetOperationSystemName(winversion);
@@ -740,54 +739,55 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName, string& filetype)
 	  ssupp_waitall = FALSE;
 	}
 
-    string searcher = lpszFileName;
-    string::size_type pos = 0;
-    if ((pos = searcher.find("&&&&", 0)) != string::npos) {
-        string url = searcher.substr(0, pos);
-        m_FileName = new TCHAR[strlen(url.c_str())+1];
-      	strcpy(m_FileName, url.c_str());
+  string searcher = lpszFileName;
+  string::size_type pos = 0;
 
-        add_headers = searcher.substr(pos+4, searcher.length()-pos-4);
+  if ((pos = searcher.find("&&&&", 0)) != string::npos) {
+    string url = searcher.substr(0, pos);
+    m_FileName = new TCHAR[strlen(url.c_str())+1];
+   	strcpy(m_FileName, url.c_str());
+
+    add_headers = searcher.substr(pos+4, searcher.length()-pos-4);
 		UrlDecode(add_headers);
-        Log("CHttpStream::Initialize: Found request with additional headers. URL: %s Headers: %s", m_FileName, add_headers.c_str());
-        stringreplace(add_headers, "\\r", "\r");
-        stringreplace(add_headers, "\r", "");
-        stringreplace(add_headers, "\\n", "\n");
-        stringreplace(add_headers, "\n", "\r\n");
-    } else {
-        m_FileName = new TCHAR[strlen(lpszFileName)+1];
-      	strcpy(m_FileName, lpszFileName);
-    }
+    Log("CHttpStream::Initialize: Found request with additional headers. URL: %s Headers: %s", m_FileName, add_headers.c_str());
+    stringreplace(add_headers, "\\r", "\r");
+    stringreplace(add_headers, "\r", "");
+    stringreplace(add_headers, "\\n", "\n");
+    stringreplace(add_headers, "\n", "\r\n");
+  } else {
+    m_FileName = new TCHAR[strlen(lpszFileName)+1];
+  	strcpy(m_FileName, lpszFileName);
+  }
 
-    DbgLog((LOG_ERROR,0,TEXT("ServerPreCheck start")));
-    hr = ServerPreCheck(m_FileName, filetype);
-    DbgLog((LOG_ERROR,0,TEXT("ServerPreCheck end")));
-    if (FAILED(hr))
-    {
-        DbgLog((LOG_ERROR,0,TEXT("ServerPreCheck failed")));
-        Log("ServerPreCheck failed!");
-        return hr;
-    }
+  DbgLog((LOG_ERROR,0,TEXT("ServerPreCheck start")));
+  hr = ServerPreCheck(m_FileName, filetype);
+  DbgLog((LOG_ERROR,0,TEXT("ServerPreCheck end")));
+  if (FAILED(hr))
+  {
+    DbgLog((LOG_ERROR,0,TEXT("ServerPreCheck failed")));
+    Log("ServerPreCheck failed!");
+    return hr;
+  }
 
 	// only do this if seeking is supported - otherwise
 	// the download is still running from the precheck
 	// also do this - otherwise some programs who query for buffering
 	// will wait forever
-    if (m_llSeekPos) {
-      Log("Seeking is supported - start download");
+  if (m_llSeekPos) {
+    Log("Seeking is supported - start download");
  	  LONGLONG realstartpos;
-      // get real first downloadpos
-      israngeavail_nextstart(0, m_llDownloadLength, &realstartpos);
-      if (realstartpos >= 0 && realstartpos < m_llDownloadLength) {
-        hr = Downloader_Start(m_FileName, realstartpos);
-        if (FAILED(hr))
-        {
-          return hr;
-        }
-      } else {
-        Log("Download not needed - file already available");
+    // get real first downloadpos
+    israngeavail_nextstart(0, m_llDownloadLength, &realstartpos);
+    if (realstartpos >= 0 && realstartpos < m_llDownloadLength) {
+      hr = Downloader_Start(m_FileName, realstartpos);
+      if (FAILED(hr))
+      {
+        return hr;
       }
+    } else {
+      Log("Download not needed - file already available");
     }
+  }
 
  #ifdef _DEBUG
   Log("return S_OK from Load");

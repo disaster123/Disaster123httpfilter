@@ -40,7 +40,7 @@ static int recv_wait_all(int sock, char* buffer, size_t length, BOOL msg_waitall
 
 int getchunkpos(LONGLONG filepos) 
 {
-    // truncating is OK as the vector starts with pos. 0
+   // truncating is OK as the vector starts with pos. 0
    return (int)(filepos/CHUNK_SIZE);
 }
 
