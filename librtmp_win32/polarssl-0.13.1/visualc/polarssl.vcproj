@@ -4,6 +4,7 @@
 	Version="9,00"
 	Name="polarssl"
 	ProjectGUID="{9707DC37-B76A-4B1A-AAFA-078474A0293D}"
+	RootNamespace="polarssl"
 	TargetFrameworkVersion="0"
 	>
 	<Platforms>
@@ -16,7 +17,7 @@
 	<Configurations>
 		<Configuration
 			Name="Release|Win32"
-			OutputDirectory="."
+			OutputDirectory="..\..\Release"
 			IntermediateDirectory=".\temp"
 			ConfigurationType="4"
 			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC60.vsprops"
@@ -68,7 +69,7 @@
 			/>
 			<Tool
 				Name="VCLibrarianTool"
-				OutputFile=".\polarssl.lib"
+				OutputFile="..\..\Release\polarssl.lib"
 				SuppressStartupBanner="true"
 			/>
 			<Tool
@@ -91,7 +92,7 @@
 		</Configuration>
 		<Configuration
 			Name="Debug|Win32"
-			OutputDirectory="."
+			OutputDirectory="...\..\Debug"
 			IntermediateDirectory=".\temp"
 			ConfigurationType="4"
 			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC60.vsprops"
@@ -142,7 +143,7 @@
 			/>
 			<Tool
 				Name="VCLibrarianTool"
-				OutputFile=".\polarssl.lib"
+				OutputFile="..\..\Debug\polarssl.lib"
 				SuppressStartupBanner="true"
 			/>
 			<Tool
