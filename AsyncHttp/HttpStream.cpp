@@ -48,7 +48,7 @@ static CCritSec m_datalock;
 static CCritSec m_CritSec;
 static CCritSec g_CritSec;
 
-RTMP          *rtmp = RTMP_Alloc();
+RTMP          rtmp = { 0 };
 std::queue<std::string> m_DownloaderQueue;
 TCHAR		  m_szTempFile[MAX_PATH]; // Name of the temp file
 BOOL          m_DownloaderShouldRun = FALSE;
@@ -556,7 +556,7 @@ CHttpStream::~CHttpStream()
       m_hDownloader = NULL;
     }
     if (isrtmp) {
-      RTMP_Close(rtmp);
+      RTMP_Close(&rtmp);
       isrtmp = FALSE;
     }
 
@@ -569,14 +569,10 @@ CHttpStream::~CHttpStream()
     DbgLog((LOG_ERROR,0,TEXT("~CHttpStream() called => END")));
 }
 
-extern void RTMP_LogSetOutput(FILE *file);
 HRESULT CHttpStream::ServerRTMPPreCheck(char* url, string& filetype)
 { 
   LONGLONG runtime = GetSystemTimeInMS();
   Log("CHttpStream::ServerRTMPPreCheck: Start for URL: %s", url);
-
-  rtmp = RTMP_Alloc();
-  RTMP_Init(rtmp);
 
   AVal hostname = { 0, 0 };
   AVal playpath = { 0, 0 };
@@ -606,23 +602,23 @@ HRESULT CHttpStream::ServerRTMPPreCheck(char* url, string& filetype)
   unsigned int parsedPort = 0;
   int parsedProtocol = RTMP_PROTOCOL_UNDEFINED;
 
+  RTMP_Init(&rtmp);
+
   if (!RTMP_ParseURL(url, &parsedProtocol, &parsedHost, &parsedPort, &parsedPlaypath, &parsedApp)) {
     Log("RTMP_ParseURL: Couldn't parse the specified url %s!", url);
     return E_FAIL;
-  } else {
-	if (!hostname.av_len)
-	  hostname = parsedHost;
-	if (port == -1)
-	  port = parsedPort;
-	if (playpath.av_len == 0 && parsedPlaypath.av_len) {
-      playpath = parsedPlaypath;
-    }
-	if (protocol == RTMP_PROTOCOL_UNDEFINED)
-	  protocol = parsedProtocol;
-	if (app.av_len == 0 && parsedApp.av_len) {
-      app = parsedApp;
-    }
   }
+
+  if (!hostname.av_len)
+	  hostname = parsedHost;
+  if (port == -1)
+	  port = parsedPort;
+  if (playpath.av_len == 0 && parsedPlaypath.av_len)
+      playpath = parsedPlaypath;
+  if (protocol == RTMP_PROTOCOL_UNDEFINED)
+      protocol = parsedProtocol;
+  if (app.av_len == 0 && parsedApp.av_len)
+      app = parsedApp;
 
   if (port == 0) {
     if (protocol & RTMP_FEATURE_SSL)
@@ -637,36 +633,44 @@ HRESULT CHttpStream::ServerRTMPPreCheck(char* url, string& filetype)
     char str[512] = { 0 };
 
     tcUrl.av_len = _snprintf_c(str, 511, "%s://%.*s:%d/%.*s", RTMPProtocolStringsLower[protocol], hostname.av_len,
-                                                           hostname.av_val, port, app.av_len, app.av_val);
+                                                              hostname.av_val, port, app.av_len, app.av_val);
     tcUrl.av_val = (char *) malloc(tcUrl.av_len + 1);
     strcpy(tcUrl.av_val, str);
   }
 
-  RTMP_SetupStream(rtmp, protocol, &hostname, port, &sockshost, &playpath,
+  swfHash.av_len = 0;
+  swfHash.av_val = NULL;
+  swfSize = 0;
+
+  Log("RTMP Options: detected tcURL: %s prot: %s hostname: %.*s port: %d sockshost: %s playpath: %s swfUrl: %s pageUrl: %s app: %.*s auth: %s swfHash: %s swfSize: %d flashVer: %s subscribepath: %s dSeek: %d dStopOffset: %d bLiveStream: %d timeout: %d", 
+      tcUrl.av_val, RTMPProtocolStringsLower[protocol], 
+      hostname.av_len, hostname.av_val, port, sockshost.av_val, playpath.av_val,
+      swfUrl.av_val, pageUrl.av_val, app.av_len, app.av_val, auth.av_val, swfHash.av_val, swfSize,
+      flashVer.av_val, subscribepath.av_val, dSeek, dStopOffset, bLiveStream, timeout);
+
+  RTMP_SetupStream(&rtmp, protocol, &hostname, port, &sockshost, &playpath,
   		   &tcUrl, &swfUrl, &pageUrl, &app, &auth, &swfHash, swfSize,
   		   &flashVer, &subscribepath, dSeek, dStopOffset, bLiveStream, timeout);
 
   /* Try to keep the stream moving if it pauses on us */
   if (!bLiveStream && !(protocol & RTMP_FEATURE_HTTP))
-    rtmp->Link.lFlags |= RTMP_LF_BUFX;
+    rtmp.Link.lFlags |= RTMP_LF_BUFX;
 
-  RTMP_SetBufferMS(rtmp, (uint32_t) (2 * 3600 * 1000)); // 2hrs
+  RTMP_SetBufferMS(&rtmp, (uint32_t) (2 * 3600 * 1000)); // 2hrs
 
-  if (!RTMP_Connect(rtmp, NULL))
+  if (!RTMP_Connect(&rtmp, NULL))
   {
     Log("CHttpStream::ServerRTMPPreCheck: RTMP_Connect not possible to: %s", url);
     return E_FAIL;
   }
-  Log("CHttpStream::ServerRTMPPreCheck: RTMP_Connect successfull - duration: %f", rtmp->m_fDuration);
+  Log("CHttpStream::ServerRTMPPreCheck: RTMP_Connect successfull - duration: %f", rtmp.m_fDuration);
 
-  Sleep(10000);
-
-  if (!RTMP_ConnectStream(rtmp, 0))
+  if (!RTMP_ConnectStream(&rtmp, 0))
   {
     Log("CHttpStream::ServerRTMPPreCheck: RTMP_ConnectStream not possible to: %s", url);
     return E_FAIL;
   }
-  Log("CHttpStream::ServerRTMPPreCheck: RTMP_ConnectStream successfull - duration: %f", rtmp->m_fDuration);
+  Log("CHttpStream::ServerRTMPPreCheck: RTMP_ConnectStream successfull - duration: %f", rtmp.m_fDuration);
 
 
   int bufferSize = 64 * 1024;
@@ -674,17 +678,17 @@ HRESULT CHttpStream::ServerRTMPPreCheck(char* url, string& filetype)
   int nRead = 0;
   do
   {
-    nRead = RTMP_Read(rtmp, buffer, bufferSize);
+    nRead = RTMP_Read(&rtmp, buffer, bufferSize);
     Log("CHttpStream::nread: %d", nRead);
     Sleep(1000);
-  } while (nRead > -1 && RTMP_IsConnected(rtmp) && !RTMP_IsTimedout(rtmp));
+  } while (nRead > -1 && RTMP_IsConnected(&rtmp) && !RTMP_IsTimedout(&rtmp));
   SAFE_DELETE_ARRAY(buffer);
 
   Log("CHttpStream::ServerRTMPPreCheck: RTMP Connection successfull - duration: %f 2.: %f Con: %s Timeout: %s", 
-    rtmp->m_fDuration,
-    RTMP_GetDuration(rtmp),
-    (RTMP_IsConnected(rtmp) ? "connected" : "unconnected"),
-    (RTMP_IsTimedout(rtmp) ? "IsTimedout" : "Is NOT Timedout")
+    rtmp.m_fDuration,
+    RTMP_GetDuration(&rtmp),
+    (RTMP_IsConnected(&rtmp) ? "connected" : "unconnected"),
+    (RTMP_IsTimedout(&rtmp) ? "IsTimedout" : "Is NOT Timedout")
     );
 
   return E_FAIL;

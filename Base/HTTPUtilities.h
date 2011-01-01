@@ -160,7 +160,7 @@ static std::runtime_error CreateSocketError(char *mess)
 static int initWSA()
 {
   WSADATA w;
-  if (int result = WSAStartup(MAKEWORD(2,2), &w) != 0)
+  if (int result = WSAStartup(MAKEWORD(1,1), &w) != 0)
   {
      Log("initWSA: Winsock 2 konnte nicht gestartet werden! Error %d", result);
      return 1;
