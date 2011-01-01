@@ -66,9 +66,9 @@
 extern void RTMP_TLS_Init();
 extern TLS_CTX RTMP_TLS_ctx;
 
-#include <zlib.h>
-
 #endif /* CRYPTO */
+
+#include <zlib.h>
 
 #define	AGENT	"Mozilla/5.0"
 
@@ -435,7 +435,7 @@ make_unix_time(char *s)
 /* Convert a Unix time to a network time string
  * Weekday, DD-MMM-YYYY HH:MM:SS GMT
  */
-static void
+void
 strtime(time_t * t, char *s)
 {
   struct tm *tm;
@@ -466,7 +466,7 @@ RTMP_HashSWF(const char *url, unsigned int *size, unsigned char *hash,
 
   date[0] = '\0';
 #ifdef _WIN32
-#ifdef XBMC4XBOX
+#ifdef _XBOX
   hpre.av_val = "Q:";
   hpre.av_len = 2;
   home.av_val = "\\UserData";

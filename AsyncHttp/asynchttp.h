@@ -38,7 +38,7 @@ class CAsyncFilterHttp : public CAsyncReader, public IFileSourceFilter, public I
 {
 public:
     CAsyncFilterHttp(LPUNKNOWN pUnk, HRESULT *phr) :
-        CAsyncReader(NAME("Disaster123's MP HTTP Filter"), pUnk, CLSID_AsyncHttp, &m_FileStream, phr),
+        CAsyncReader(NAME("Disaster123's MP HTTP Filter"), pUnk, CLSID_AsyncHttp, &m_HttpStream, phr),
         m_pFileName(NULL),
         m_pbData(NULL)
     {
@@ -46,8 +46,8 @@ public:
 
     ~CAsyncFilterHttp()
     {
-        delete [] m_pbData;
-        delete [] m_pFileName;
+      delete [] m_pbData;
+      delete [] m_pFileName;
     }
 
     static CUnknown * WINAPI CreateInstance(LPUNKNOWN, HRESULT *);
@@ -56,136 +56,132 @@ public:
 
     STDMETHODIMP NonDelegatingQueryInterface(REFIID riid, void **ppv)
     {
-        if (riid == IID_IFileSourceFilter) {
-            return GetInterface((IFileSourceFilter *)this, ppv);
-        } else if (riid == IID_IAMOpenProgress) {
-            return GetInterface((IAMOpenProgress *)this, ppv);
-        } else {
-            return CAsyncReader::NonDelegatingQueryInterface(riid, ppv);
-        }
+      if (riid == IID_IFileSourceFilter) {
+        return GetInterface((IFileSourceFilter *)this, ppv);
+      } else if (riid == IID_IAMOpenProgress) {
+        return GetInterface((IAMOpenProgress *)this, ppv);
+      } else {
+        return CAsyncReader::NonDelegatingQueryInterface(riid, ppv);
+      }
     }
 
     STDMETHODIMP JoinFilterGraph(
         IFilterGraph * pGraph,
         LPCWSTR pName)
     {
-        CAutoLock cObjectLock(m_pLock);
-
-        HRESULT hr = CBaseFilter::JoinFilterGraph(pGraph, pName);
-
-        m_FileStream.SetEventSink(m_pSink);
-
-        return hr;
+      CAutoLock cObjectLock(m_pLock);
+      HRESULT hr = CBaseFilter::JoinFilterGraph(pGraph, pName);
+      m_HttpStream.SetEventSink(m_pSink);
+      return hr;
     }
 
     /*  IFileSourceFilter methods */
-
     //  Load a (new) file
     STDMETHODIMP Load(LPCOLESTR lpwszFileName, const AM_MEDIA_TYPE *pmt)
     {
-		USES_CONVERSION;
-        CheckPointer(lpwszFileName, E_POINTER);
+      USES_CONVERSION;
+      CheckPointer(lpwszFileName, E_POINTER);
 
-        int cch = lstrlenW(lpwszFileName) + 1;
+      int cch = lstrlenW(lpwszFileName) + 1;
 
-        CAutoLock lck(&m_csFilter);
+      CAutoLock lck(&m_csFilter);
 
-        /*  Check the file type */
-        CMediaType cmt;
-		cmt.InitMediaType();
+      /*  Check the file type */
+      CMediaType cmt;
+	  cmt.InitMediaType();
 
-        string filetype = "";
-		HRESULT hr = m_FileStream.Initialize(OLE2T(lpwszFileName), filetype);
-        Log("asynchttp: URL Filetype: %s", filetype.c_str());
-        if (FAILED(hr))
-		{
-			Log("asynchttp: Initialisation failed! Cannot load URL!");
-			return hr;
-		}
+      string filetype = "";
+	  HRESULT hr = m_HttpStream.Initialize(OLE2T(lpwszFileName), filetype);
+      Log("asynchttp: URL Filetype: %s", filetype.c_str());
+      if (FAILED(hr))
+		  {
+			  Log("asynchttp: Initialisation failed! Cannot load URL!");
+			  return hr;
+		  }
 
-        if (NULL == pmt) 
-		{
-			GUID subtype = MEDIASUBTYPE_NULL;
-			TCHAR *szExtension = PathFindExtension(OLE2T(lpwszFileName));
-            TCHAR *FileName = OLE2T(lpwszFileName);
+      if (NULL == pmt) 
+		  {
+		  	GUID subtype = MEDIASUBTYPE_NULL;
+	  		TCHAR *szExtension = PathFindExtension(OLE2T(lpwszFileName));
+        TCHAR *FileName = OLE2T(lpwszFileName);
 
-            if ( (filetype.compare("video/x-msvideo") == 0) || 
-                 (szExtension && _tcscmp(szExtension, TEXT(".avi")) == 0) ||
-                 (_tcsstr(FileName, ".avi?") > 0) ||
-                 (_tcsstr(FileName, ".avi&&&&") > 0) )
-			{
-				subtype = MEDIASUBTYPE_Avi;
-                Log("subtype MEDIASUBTYPE_Avi / avi");
-			}
-			else if ( (filetype.compare("video/divx") == 0) || 
-                      (szExtension && _tcscmp(szExtension, TEXT(".divx")) == 0) ||
-                      (_tcsstr(FileName, ".divx?") > 0) ||
-                      (_tcsstr(FileName, ".divx&&&&") > 0) )
-			{
-				subtype = MEDIASUBTYPE_Avi;
-                Log("subtype MEDIASUBTYPE_Avi / divx");
-			}
-			else if ( (filetype.compare("video/x-matroska") == 0) || 
-                      (szExtension && _tcscmp(szExtension, TEXT(".mkv")) == 0) ||
-                      (_tcsstr(FileName, ".mkv?") > 0) ||
-                      (_tcsstr(FileName, ".mkv&&&&") > 0) )
-			{
-				subtype = MEDIASUBTYPE_H264;
-                Log("subtype MEDIASUBTYPE_H264 / mkv");
-			}
-			else if ( (filetype.compare("video/mp4") == 0) || 
-                      (szExtension && _tcscmp(szExtension, TEXT(".mp4")) == 0) ||
-                      (_tcsstr(FileName, ".mp4?") > 0) ||
-                      (_tcsstr(FileName, ".mp4&&&&") > 0) )
-			{
-				subtype = MEDIASUBTYPE_MP4;
-                Log("subtype MEDIASUBTYPE_MP4 / mp4");
-			}
-			else if ( (filetype.compare("video/x-flv") == 0) || 
-                      (filetype.compare("video/flv") == 0) ||
-                      (szExtension && _tcscmp(szExtension, TEXT(".flv")) == 0) ||
-                      (_tcsstr(FileName, ".flv?") > 0) ||
-                      (_tcsstr(FileName, ".flv&&&&") > 0) )
-			{
-				subtype = MEDIASUBTYPE_FLV;
-                Log("subtype MEDIASUBTYPE_FLV / flv");
-			}
-			else
-			{
-				Log("subtype MEDIASUBTYPE_NULL / Wildcard");
-			}
+        if ( (filetype.compare("video/x-msvideo") == 0) || 
+             (szExtension && _tcscmp(szExtension, TEXT(".avi")) == 0) ||
+             (_tcsstr(FileName, ".avi?") > 0) ||
+             (_tcsstr(FileName, ".avi&&&&") > 0) )
+	   		{
+			  	subtype = MEDIASUBTYPE_Avi;
+          Log("subtype MEDIASUBTYPE_Avi / avi");
+			  }
+			  else if ( (filetype.compare("video/divx") == 0) || 
+                  (szExtension && _tcscmp(szExtension, TEXT(".divx")) == 0) ||
+                  (_tcsstr(FileName, ".divx?") > 0) ||
+                  (_tcsstr(FileName, ".divx&&&&") > 0) )
+			  {
+				  subtype = MEDIASUBTYPE_Avi;
+          Log("subtype MEDIASUBTYPE_Avi / divx");
+			  }
+			  else if ( (filetype.compare("video/x-matroska") == 0) || 
+                  (szExtension && _tcscmp(szExtension, TEXT(".mkv")) == 0) ||
+                  (_tcsstr(FileName, ".mkv?") > 0) ||
+                  (_tcsstr(FileName, ".mkv&&&&") > 0) )
+			  {
+				  subtype = MEDIASUBTYPE_H264;
+          Log("subtype MEDIASUBTYPE_H264 / mkv");
+			  }
+			  else if ( (filetype.compare("video/mp4") == 0) || 
+                  (szExtension && _tcscmp(szExtension, TEXT(".mp4")) == 0) ||
+                  (_tcsstr(FileName, ".mp4?") > 0) ||
+                  (_tcsstr(FileName, ".mp4&&&&") > 0) )
+			  {
+				  subtype = MEDIASUBTYPE_MP4;
+          Log("subtype MEDIASUBTYPE_MP4 / mp4");
+			  }
+			  else if ( (filetype.compare("video/x-flv") == 0) || 
+                  (filetype.compare("video/flv") == 0) ||
+                  (szExtension && _tcscmp(szExtension, TEXT(".flv")) == 0) ||
+                  (_tcsstr(FileName, ".flv?") > 0) ||
+                  (_tcsstr(FileName, ".flv&&&&") > 0) )
+			  {
+				  subtype = MEDIASUBTYPE_FLV;
+          Log("subtype MEDIASUBTYPE_FLV / flv");
+			  }
+			  else
+		  	{
+				  Log("subtype MEDIASUBTYPE_NULL / Wildcard");
+			  }
 
-			cmt.SetType(&MEDIATYPE_Stream);
-            cmt.SetSubtype(&subtype);
-        }
-        else 
-		{
-  		    HRESULT hr = CopyMediaType(&cmt, pmt);
+			   cmt.SetType(&MEDIATYPE_Stream);
+         cmt.SetSubtype(&subtype);
+      }
+      else 
+		  {
+  		  HRESULT hr = CopyMediaType(&cmt, pmt);
    			if (FAILED(hr))
-			{
-				return hr;
-			}
-        }
+			  {
+				  return hr;
+		  	}
+      }
 
-        m_pFileName = new WCHAR[cch];
-        if (m_pFileName!=NULL)
+      m_pFileName = new WCHAR[cch];
+      if (m_pFileName!=NULL)
 			CopyMemory(m_pFileName, lpwszFileName, cch*sizeof(WCHAR));
 
-		// this is how MS async filter does it
-		cmt.bFixedSizeSamples = TRUE;
-		cmt.bTemporalCompression = FALSE;
-        cmt.lSampleSize = 1;
+  		// this is how MS async filter does it
+  		cmt.bFixedSizeSamples = TRUE;
+  		cmt.bTemporalCompression = FALSE;
+      cmt.lSampleSize = 1;
 
-		//m_mt = cmt;
-		hr = CopyMediaType(&m_mt, &cmt);
-		if (FAILED(hr))
-		{
-			FreeMediaType(cmt);
-			return hr;
-		}
+	  	//m_mt = cmt;
+	  	hr = CopyMediaType(&m_mt, &cmt);
+	  	if (FAILED(hr))
+	  	{
+		  	FreeMediaType(cmt);
+		  	return hr;
+		  }
 
-		FreeMediaType(cmt);
-        return S_OK;
+  		FreeMediaType(cmt);
+      return S_OK;
     }
 
     // GetCurFile: Returns the name and media type of the current file.
@@ -221,7 +217,7 @@ public:
           return S_OK;
       }
 
-      HRESULT hr = m_FileStream.Length(&llLength, &llAvailable, TRUE);
+      HRESULT hr = m_HttpStream.Length(&llLength, &llAvailable, TRUE);
       if (SUCCEEDED(hr)) {
           *pllTotal = llLength;
           *pllCurrent = llAvailable;
@@ -237,12 +233,12 @@ public:
 
     STDMETHODIMP AbortOperation()
     {
-       return m_FileStream.Cancel();
+       return m_HttpStream.Cancel();
     }
 
 private:
     LPWSTR      m_pFileName;
     LONGLONG    m_llSize;
     PBYTE       m_pbData;
-	CHttpStream m_FileStream;
+	CHttpStream m_HttpStream;
 };

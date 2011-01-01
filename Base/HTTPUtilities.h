@@ -1,7 +1,7 @@
 
 extern void Log(const char *fmt, ...);
 
-void GetOperationSystemName(vector<int>& winversion)
+static void GetOperationSystemName(vector<int>& winversion)
 {
   winversion.resize(3, 0);
 
@@ -38,13 +38,13 @@ static int recv_wait_all(int sock, char* buffer, size_t length, BOOL msg_waitall
   }
 }
 
-int getchunkpos(LONGLONG filepos) 
+static int getchunkpos(LONGLONG filepos) 
 {
    // truncating is OK as the vector starts with pos. 0
    return (int)(filepos/CHUNK_SIZE);
 }
 
-void stringreplace(string& str, string search, string replace)
+static void stringreplace(string& str, string search, string replace)
 {
     ASSERT( search != replace );
 
@@ -60,7 +60,7 @@ void stringreplace(string& str, string search, string replace)
     }
 }
 
-char CharFromHex (string a)
+static char CharFromHex (string a)
 {
 	istringstream Blat (a);
 	int c;
@@ -68,7 +68,7 @@ char CharFromHex (string a)
 	return char (c);
 }
 
-void UrlDecode( string& Text )
+static void UrlDecode( string& Text )
 {
 	string::size_type Pos;
 	string Hex;
@@ -79,13 +79,13 @@ void UrlDecode( string& Text )
 	}
 }
 
-double Round(double Zahl, int Stellen)
+static double Round(double Zahl, int Stellen)
 {
     double v[] = { 1, 10, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8 };  // mgl. verlängern
     return floor(Zahl * v[Stellen] + 0.5) / v[Stellen];
 }
 
-ULONGLONG GetSystemTimeInMS() {
+static ULONGLONG GetSystemTimeInMS() {
   SYSTEMTIME systemTime;
   GetSystemTime(&systemTime);
 
@@ -101,7 +101,7 @@ ULONGLONG GetSystemTimeInMS() {
   return systemTimeIn_ms;
 }
 
-int GetHostAndPath(const char *szUrl, char **pszHost, char **pszPath, int *pszPort)
+static int GetHostAndPath(const char *szUrl, char **pszHost, char **pszPath, int *pszPort)
 {
     char *Host;
     char *Path;
@@ -132,7 +132,7 @@ int GetHostAndPath(const char *szUrl, char **pszHost, char **pszPath, int *pszPo
    return 1;
 }
 
-std::runtime_error CreateSocketError(char *mess)
+static std::runtime_error CreateSocketError(char *mess)
 {
     if (strlen(mess) > 0) {
         Log("CreateSocketError: %s", mess);
@@ -157,7 +157,7 @@ std::runtime_error CreateSocketError(char *mess)
   return std::runtime_error(msg);
 }
 
-int initWSA()
+static int initWSA()
 {
   WSADATA w;
   if (int result = WSAStartup(MAKEWORD(2,2), &w) != 0)
@@ -169,7 +169,7 @@ int initWSA()
   return 0;
 }
 
-void DownloaderThread_geturlpos(char **url, LONGLONG *startpos, string down_queue_entry)
+static void DownloaderThread_geturlpos(char **url, LONGLONG *startpos, string down_queue_entry)
 {
   // this isn't perfect but the URL can't be bigger than the whole line :-)
   *url = new char[strlen(down_queue_entry.c_str())];
@@ -177,7 +177,7 @@ void DownloaderThread_geturlpos(char **url, LONGLONG *startpos, string down_queu
   sscanf(down_queue_entry.c_str(), "%s || %I64d", *url, &*startpos);
 }
 
-int Initialize_connection(char* szHost, int szPort)
+static int Initialize_connection(char* szHost, int szPort)
 {
 	   int Socket = -1;
 
@@ -217,7 +217,7 @@ int Initialize_connection(char* szHost, int szPort)
    return Socket;
 }
 
-char* buildrequeststring(char* szHost, int szPort, char* szPath, LONGLONG startpos, BOOL m_llSeekPos, string& add_headers)
+static char* buildrequeststring(char* szHost, int szPort, char* szPath, LONGLONG startpos, BOOL m_llSeekPos, string& add_headers)
 {
 	// this is bad also cause we need another allocation at the buttom but how to determine the size?
 	char request[2048];
@@ -242,7 +242,7 @@ char* buildrequeststring(char* szHost, int szPort, char* szPath, LONGLONG startp
 	return rstr;
 }
 
-void GetLineFromSocket(int socket, string& line) {
+static void GetLineFromSocket(int socket, string& line) {
     char c;
     FD_SET fdSet;
     struct timeval tval;
@@ -268,7 +268,7 @@ void GetLineFromSocket(int socket, string& line) {
     throw CreateSocketError("select or recv timeout after 15s"); 
 }
 
-void GetHTTPHeaders(int Socket, LONGLONG* filesize, int* statuscode, string& headers)
+static void GetHTTPHeaders(int Socket, LONGLONG* filesize, int* statuscode, string& headers)
 {
        // Read Header and ignore
 	   string HeaderLine;
@@ -316,7 +316,7 @@ void GetHTTPHeaders(int Socket, LONGLONG* filesize, int* statuscode, string& hea
 	   *filesize = max(contrange, contlength);
 }
 
-void send_to_socket(int socket, const char* const buf, const int size)
+static void send_to_socket(int socket, const char* const buf, const int size)
 {
     ULONGLONG time_start = GetSystemTimeInMS();
     int bytesSent = 0; // Anzahl Bytes die wir bereits vom Buffer gesendet haben
@@ -334,7 +334,7 @@ void send_to_socket(int socket, const char* const buf, const int size)
     }
 }
 
-HRESULT GetValueFromHeader(const char* head, const char* key, string& value)
+static HRESULT GetValueFromHeader(const char* head, const char* key, string& value)
 {
     string::size_type pos = 0;
     string::size_type opos = 0;
@@ -367,7 +367,7 @@ HRESULT GetValueFromHeader(const char* head, const char* key, string& value)
     return S_OK;
 }
 
-string GetLocationFromHeader(string headers)
+static string GetLocationFromHeader(string headers)
 {
    string ret;
 

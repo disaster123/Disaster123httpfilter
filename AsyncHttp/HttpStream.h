@@ -18,24 +18,9 @@
 
 using namespace std;
 
-//************************************************************************
-//  CHttpStream
-//  Implements the CAsyncStream interface for HTTP progressive download.
-//
-//  This class uses WinHttp to make asynchronous HTTP requests and 
-//  saves the results into a temp file. The BeginRead/EndRead methods
-//  read from the temp file. The read request will block until the 
-//  requested data has finished downloading. Therefore, if the caller
-//  attempts to read data from the end of the file, it will block until
-//  the entire file is downloaded (or the download is canceled).
-//
-//***********************************************************************/
-
-
 class CHttpStream : public CAsyncStream
 {
 public:
-
 	CHttpStream() : 
       m_pEventSink(NULL)
 	{
@@ -49,12 +34,11 @@ public:
 
     HRESULT SetEventSink(IMediaEventSink *pSink)
     {
-        m_pEventSink = pSink; // Do not add ref;
-        return S_OK;
+      m_pEventSink = pSink; // Do not add ref;
+      return S_OK;
     }
 
 	// Implementation of CAsyncStream methods
-
     HRESULT StartRead(
 		PBYTE pbBuffer,
 		DWORD dwBytesToRead,
@@ -82,12 +66,11 @@ public:
 	void OnError(DWORD dwErr); 
 
 	HRESULT Downloader_Start(TCHAR* szUrl, LONGLONG startpoint);
-	HRESULT ServerPreCheck(const char* url, string& filetype);
+	HRESULT ServerHTTPPreCheck(const char* url, string& filetype);
+	HRESULT ServerRTMPPreCheck(char* url, string& filetype);
 
 private:
-
 	TCHAR       *m_FileName;
-
     IMediaEventSink *m_pEventSink;
 };
 

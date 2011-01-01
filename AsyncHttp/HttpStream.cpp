@@ -32,6 +32,7 @@
 #include "..\Base\asyncio.h"
 #include "HttpStream.h"
 #include "..\Base\HTTPUtilities.h"
+#include "..\librtmp_win32\librtmp\rtmp.h"
 
 #include "AutoLockDebug.h"
 #include "..\Base\alloctracing.h"
@@ -47,22 +48,24 @@ static CCritSec m_datalock;
 static CCritSec m_CritSec;
 static CCritSec g_CritSec;
 
+RTMP          *rtmp = RTMP_Alloc();
 std::queue<std::string> m_DownloaderQueue;
-TCHAR		      m_szTempFile[MAX_PATH]; // Name of the temp file
+TCHAR		  m_szTempFile[MAX_PATH]; // Name of the temp file
 BOOL          m_DownloaderShouldRun = FALSE;
 HANDLE        m_hDownloader = NULL;
-HANDLE		    m_hFileWrite = INVALID_HANDLE_VALUE;   // File handle for writing to the temp file.
-HANDLE		    m_hFileRead = INVALID_HANDLE_VALUE;    // File handle for reading from the temp file.
-LONGLONG	    m_llDownloadLength = -1;
-LONGLONG	    m_llDownloadStart  = -1;
-LONGLONG	    m_llDownloadPos  = -1;
-LONGLONG	    m_llDownloadedBytes  = -1;
+HANDLE		  m_hFileWrite = INVALID_HANDLE_VALUE;   // File handle for writing to the temp file.
+HANDLE		  m_hFileRead = INVALID_HANDLE_VALUE;    // File handle for reading from the temp file.
+LONGLONG	  m_llDownloadLength = -1;
+LONGLONG	  m_llDownloadStart  = -1;
+LONGLONG	  m_llDownloadPos  = -1;
+LONGLONG	  m_llDownloadedBytes  = -1;
 LONGLONG      m_llBytesRequested;     // Size of most recent read request.
 BOOL          m_llSeekPos;
 float         m_lldownspeed;
 vector<BOOL>  CHUNK_V; // this is the HAVING CHUNK Vector :-)
 string        add_headers;
 vector<int>   winversion;
+BOOL          isrtmp = FALSE;
 BOOL          ssupp_waitall = TRUE;
 #pragma endregion
 
@@ -552,6 +555,10 @@ CHttpStream::~CHttpStream()
       WaitForSingleObject(m_hDownloader, INFINITE);	
       m_hDownloader = NULL;
     }
+    if (isrtmp) {
+      RTMP_Close(rtmp);
+      isrtmp = FALSE;
+    }
 
     Log("~CHttpStream() StopLogger...");
     StopLogger();
@@ -562,147 +569,277 @@ CHttpStream::~CHttpStream()
     DbgLog((LOG_ERROR,0,TEXT("~CHttpStream() called => END")));
 }
 
-HRESULT CHttpStream::ServerPreCheck(const char* url, string& filetype)
+extern void RTMP_LogSetOutput(FILE *file);
+HRESULT CHttpStream::ServerRTMPPreCheck(char* url, string& filetype)
+{ 
+  LONGLONG runtime = GetSystemTimeInMS();
+  Log("CHttpStream::ServerRTMPPreCheck: Start for URL: %s", url);
+
+  rtmp = RTMP_Alloc();
+  RTMP_Init(rtmp);
+
+  AVal hostname = { 0, 0 };
+  AVal playpath = { 0, 0 };
+  AVal subscribepath = { 0, 0 };
+  int port = -1;
+  int protocol = RTMP_PROTOCOL_UNDEFINED;
+  int retries = 0;
+  int bLiveStream = FALSE;	// is it a live stream? then we can't seek/resume
+  int bHashes = FALSE;		// display byte counters not hashes by default
+  uint32_t dSeek = 0;		// seek position in resume mode, 0 otherwise
+  long int timeout = 120;	// timeout connection after 120 seconds
+  uint32_t dStartOffset = 0;	// seek position in non-live mode
+  uint32_t dStopOffset = 0;
+  AVal swfUrl = { 0, 0 };
+  AVal tcUrl = { 0, 0 };
+  AVal pageUrl = { 0, 0 };
+  AVal app = { 0, 0 };
+  AVal auth = { 0, 0 };
+  AVal swfHash = { 0, 0 };
+  uint32_t swfSize = 0;
+  AVal flashVer = { 0, 0 };
+  AVal sockshost = { 0, 0 };
+
+  protocol = RTMP_PROTOCOL_RTMP;
+
+  AVal parsedHost, parsedApp, parsedPlaypath;
+  unsigned int parsedPort = 0;
+  int parsedProtocol = RTMP_PROTOCOL_UNDEFINED;
+
+  if (!RTMP_ParseURL(url, &parsedProtocol, &parsedHost, &parsedPort, &parsedPlaypath, &parsedApp)) {
+    Log("RTMP_ParseURL: Couldn't parse the specified url %s!", url);
+    return E_FAIL;
+  } else {
+	if (!hostname.av_len)
+	  hostname = parsedHost;
+	if (port == -1)
+	  port = parsedPort;
+	if (playpath.av_len == 0 && parsedPlaypath.av_len) {
+      playpath = parsedPlaypath;
+    }
+	if (protocol == RTMP_PROTOCOL_UNDEFINED)
+	  protocol = parsedProtocol;
+	if (app.av_len == 0 && parsedApp.av_len) {
+      app = parsedApp;
+    }
+  }
+
+  if (port == 0) {
+    if (protocol & RTMP_FEATURE_SSL)
+	  port = 443;
+    else if (protocol & RTMP_FEATURE_HTTP)
+  	  port = 80;
+    else
+	  port = 1935;
+  }
+
+  if (tcUrl.av_len == 0) {
+    char str[512] = { 0 };
+
+    tcUrl.av_len = _snprintf_c(str, 511, "%s://%.*s:%d/%.*s", RTMPProtocolStringsLower[protocol], hostname.av_len,
+                                                           hostname.av_val, port, app.av_len, app.av_val);
+    tcUrl.av_val = (char *) malloc(tcUrl.av_len + 1);
+    strcpy(tcUrl.av_val, str);
+  }
+
+  RTMP_SetupStream(rtmp, protocol, &hostname, port, &sockshost, &playpath,
+  		   &tcUrl, &swfUrl, &pageUrl, &app, &auth, &swfHash, swfSize,
+  		   &flashVer, &subscribepath, dSeek, dStopOffset, bLiveStream, timeout);
+
+  /* Try to keep the stream moving if it pauses on us */
+  if (!bLiveStream && !(protocol & RTMP_FEATURE_HTTP))
+    rtmp->Link.lFlags |= RTMP_LF_BUFX;
+
+  RTMP_SetBufferMS(rtmp, (uint32_t) (2 * 3600 * 1000)); // 2hrs
+
+  if (!RTMP_Connect(rtmp, NULL))
+  {
+    Log("CHttpStream::ServerRTMPPreCheck: RTMP_Connect not possible to: %s", url);
+    return E_FAIL;
+  }
+  Log("CHttpStream::ServerRTMPPreCheck: RTMP_Connect successfull - duration: %f", rtmp->m_fDuration);
+
+  Sleep(10000);
+
+  if (!RTMP_ConnectStream(rtmp, 0))
+  {
+    Log("CHttpStream::ServerRTMPPreCheck: RTMP_ConnectStream not possible to: %s", url);
+    return E_FAIL;
+  }
+  Log("CHttpStream::ServerRTMPPreCheck: RTMP_ConnectStream successfull - duration: %f", rtmp->m_fDuration);
+
+
+  int bufferSize = 64 * 1024;
+  char *buffer = (char *) malloc(bufferSize);
+  int nRead = 0;
+  do
+  {
+    nRead = RTMP_Read(rtmp, buffer, bufferSize);
+    Log("CHttpStream::nread: %d", nRead);
+    Sleep(1000);
+  } while (nRead > -1 && RTMP_IsConnected(rtmp) && !RTMP_IsTimedout(rtmp));
+  SAFE_DELETE_ARRAY(buffer);
+
+  Log("CHttpStream::ServerRTMPPreCheck: RTMP Connection successfull - duration: %f 2.: %f Con: %s Timeout: %s", 
+    rtmp->m_fDuration,
+    RTMP_GetDuration(rtmp),
+    (RTMP_IsConnected(rtmp) ? "connected" : "unconnected"),
+    (RTMP_IsTimedout(rtmp) ? "IsTimedout" : "Is NOT Timedout")
+    );
+
+  return E_FAIL;
+
+  m_llSeekPos = FALSE;
+  //m_llDownloadLength = dsize;
+
+  //HRESULT hr = CreateTempFile(dsize);
+  HRESULT hr = CreateTempFile(1);
+  if (FAILED(hr) || m_hFileWrite == INVALID_HANDLE_VALUE || m_hFileRead == INVALID_HANDLE_VALUE) {
+    Log("ServerHTTPPreCheck: CreateTempFile failed!");
+    return E_FAIL;
+  }
+
+  #ifdef _DEBUG
+    Log("ServerHTTPPreCheck: added queue download 0");
+  #endif
+  add_to_downloadqueue( 0 );
+
+  return S_OK;
+}
+
+HRESULT CHttpStream::ServerHTTPPreCheck(const char* url, string& filetype)
 {
-      int   Socket;
-	  char *szHost = NULL;
-      char *szPath = NULL;
-	  int   szPort = NULL;
-      LONGLONG runtime = GetSystemTimeInMS();
+  int   Socket;
+  char *szHost = NULL;
+  char *szPath = NULL;
+  int   szPort = NULL;
+  LONGLONG runtime = GetSystemTimeInMS();
 	  
-	  Log("ServerPreCheck: Start for URL: %s", url);
+  Log("CHttpStream::ServerHTTPPreCheck: Start for URL: %s", url);
 
-	  // get Host, Path and Port from URL
-      if (GetHostAndPath(url, &szHost, &szPath, &szPort) != 0)
-      {
-		   SAFE_DELETE_ARRAY(szHost);
-		   SAFE_DELETE_ARRAY(szPath);
-		   Log("ServerPreCheck: GetHostAndPath Error");
-		   return E_FAIL;
-      }
+  // get Host, Path and Port from URL
+  if (GetHostAndPath(url, &szHost, &szPath, &szPort) != 0)
+  {
+    SAFE_DELETE_ARRAY(szHost);
+    SAFE_DELETE_ARRAY(szPath);
+	Log("CHttpStream::ServerHTTPPreCheck: GetHostAndPath Error");
+	return E_FAIL;
+  }
 
-	  Socket = Initialize_connection(szHost, szPort);
-	  if (Socket == -1) {
-		   SAFE_DELETE_ARRAY(szHost);
-		   SAFE_DELETE_ARRAY(szPath);
-		   Log("ServerPreCheck: Socket could not be initialised.");
-		   return E_FAIL;
-	  }
+  Socket = Initialize_connection(szHost, szPort);
+  if (Socket == -1) {
+   SAFE_DELETE_ARRAY(szHost);
+   SAFE_DELETE_ARRAY(szPath);
+   Log("ServerHTTPPreCheck: Socket could not be initialised.");
+   return E_FAIL;
+  }
 
-	   char *request = buildrequeststring(szHost, szPort, szPath, 0, true, add_headers);
+  char *request = buildrequeststring(szHost, szPort, szPath, 0, true, add_headers);
+  try {
+    send_to_socket(Socket, request, strlen(request));
+  } catch(exception ex) {
+    closesocket(Socket);
+    SAFE_DELETE_ARRAY(szHost);
+    SAFE_DELETE_ARRAY(szPath);
+    SAFE_DELETE_ARRAY(request);
 
-	   try {
-  	      send_to_socket(Socket, request, strlen(request));
-	   } catch(exception ex) {
-	      closesocket(Socket);
-		  SAFE_DELETE_ARRAY(szHost);
-		  SAFE_DELETE_ARRAY(szPath);
-          SAFE_DELETE_ARRAY(request);
+    Log("ServerHTTPPreCheck: Fehler beim Senden des Requests %s!", ex);
+    return E_FAIL;
+  }
+  SAFE_DELETE_ARRAY(request);
 
-          Log("ServerPreCheck: Fehler beim Senden des Requests %s!", ex);
-	      return E_FAIL;
-	   }
-       SAFE_DELETE_ARRAY(request);
+  LONGLONG dsize = -1;
+  int statuscode = 999;
+  string headers;
+  GetHTTPHeaders(Socket, &dsize, &statuscode, headers);
+  GetValueFromHeader(headers.c_str(), "Content-Type", filetype);
 
-	   LONGLONG dsize = -1;
-       int statuscode = 999;
-       string headers;
-       GetHTTPHeaders(Socket, &dsize, &statuscode, headers);
-       GetValueFromHeader(headers.c_str(), "Content-Type", filetype);
+  Log("ServerHTTPPreCheck: Filesize: %I64d Statuscode: %d Filetype: %s", dsize, statuscode, filetype.c_str());
+  if (statuscode == 301) {
+    // map 301 to 302 for us - it doesn't matter if the redirect is permanent or temporary
+    statuscode = 302;
+  }
+  if (statuscode != 302 && dsize <= 0) {
+    closesocket(Socket);
+    SAFE_DELETE_ARRAY(szHost);
+    SAFE_DELETE_ARRAY(szPath);
 
-       Log("ServerPreCheck: Filesize: %I64d Statuscode: %d Filetype: %s", dsize, statuscode, filetype.c_str());
+    Log("Server reported illegal Filesize of 0 - we cannot download 0 bytes!");
 
-       if (statuscode == 301) {
-         // map 301 to 302 for us - it doesn't matter if the redirect is permanent or temporary
-         statuscode = 302;
-       }
-	   if (statuscode != 302 && dsize <= 0) {
-	      closesocket(Socket);
-          SAFE_DELETE_ARRAY(szHost);
-		  SAFE_DELETE_ARRAY(szPath);
+   return E_FAIL;
+  }
 
-          Log("Server reported illegal Filesize of 0 - we cannot download 0 bytes!");
+  if (statuscode == 302) {
+    string newurl = GetLocationFromHeader(headers);
 
-		  return E_FAIL;
-	   }
+    closesocket(Socket);
+    SAFE_DELETE_ARRAY(szHost);
+    SAFE_DELETE_ARRAY(szPath);
 
-       if (statuscode == 302) {
-          string newurl = GetLocationFromHeader(headers);
+    SAFE_DELETE_ARRAY(m_FileName);
+    m_FileName = new TCHAR[strlen(newurl.c_str())+1];
+    strcpy(m_FileName, newurl.c_str());
 
-	      closesocket(Socket);
-          SAFE_DELETE_ARRAY(szHost);
-	      SAFE_DELETE_ARRAY(szPath);
+    Log("\n\nServerHTTPPreCheck: REDIRECTED to %s!\n", newurl.c_str());
+    return ServerHTTPPreCheck(newurl.c_str(), filetype);
+  }
+  else if (statuscode == 200 || statuscode == 416) {
+    Log("\n\nServerHTTPPreCheck: SERVER DOES NOT SUPPORT SEEKING!\n");
+    m_llSeekPos = FALSE;
+  }
+  else if (statuscode == 206) {
+    m_llSeekPos = TRUE;
+  }
+  else {
+    Log("\n\nServerHTTPPreCheck: SERVER NOT SUPPORTED! Code: %d\n", statuscode);
+    closesocket(Socket);
+    SAFE_DELETE_ARRAY(szHost);
+    SAFE_DELETE_ARRAY(szPath);
+    return E_FAIL;
+  }
 
-          SAFE_DELETE_ARRAY(m_FileName);
-          m_FileName = new TCHAR[strlen(newurl.c_str())+1];
-          strcpy(m_FileName, newurl.c_str());
+  closesocket(Socket);
+  SAFE_DELETE_ARRAY(szHost);
+  SAFE_DELETE_ARRAY(szPath);
 
-          Log("\n\nServerPreCheck: REDIRECTED to %s!\n", newurl.c_str());
-          return ServerPreCheck(newurl.c_str(), filetype);
-       }
-       else if (statuscode == 200 || statuscode == 416) {
-          Log("\n\nServerPreCheck: SERVER DOES NOT SUPPORT SEEKING!\n");
-          m_llSeekPos = FALSE;
-       }
-       else if (statuscode == 206) {
-            m_llSeekPos = TRUE;
-       }
-       else {
-          Log("\n\nServerPreCheck: SERVER NOT SUPPORTED! Code: %d\n", statuscode);
-	      closesocket(Socket);
-          SAFE_DELETE_ARRAY(szHost);
-	      SAFE_DELETE_ARRAY(szPath);
-          return E_FAIL;
-	   }
+  m_llDownloadLength = dsize;
+  Log("\n\nServerHTTPPreCheck: SERVER OK => SUPPORTED!\n");
 
-	   closesocket(Socket);
-       SAFE_DELETE_ARRAY(szHost);
-	   SAFE_DELETE_ARRAY(szPath);
+  runtime = GetSystemTimeInMS()-runtime;
+  if (runtime > 2500) {
+    Log("ServerHTTPPreCheck: Remote Server is too slow to render anything! Connect Time: %I64d", runtime);
+    return E_FAIL;
+  }
 
-       m_llDownloadLength = dsize;
-       Log("\n\nServerPreCheck: SERVER OK => SUPPORTED!\n");
-
-	   runtime = GetSystemTimeInMS()-runtime;
-	   if (runtime > 2500) {
-  		 Log("ServerPreCheck: Remote Server is too slow to render anything! Connect Time: %I64d", runtime);
-		 return E_FAIL;
-	   }
-
-#ifdef _DEBUG
-   Log("ServerPreCheck: Create Temfile");
-#endif
    HRESULT hr = CreateTempFile(dsize);
-#ifdef _DEBUG
-   Log("ServerPreCheck: Create Temfile done");
-#endif
    if (FAILED(hr) || m_hFileWrite == INVALID_HANDLE_VALUE || m_hFileRead == INVALID_HANDLE_VALUE) {
-	   Log("ServerPreCheck: CreateTempFile failed!");
+	   Log("ServerHTTPPreCheck: CreateTempFile failed!");
 	   return E_FAIL;
    }
 
    // Request the start and END
    runtime = GetSystemTimeInMS();
    #ifdef _DEBUG
-     Log("ServerPreCheck: added queue download 0");
+     Log("ServerHTTPPreCheck: added queue download 0");
    #endif
    add_to_downloadqueue( 0 );
    WaitForSize(0, min( (256*1024), dsize) );
    #ifdef _DEBUG
-     Log("ServerPreCheck: wait for size: %I64d - DONE", min( (256*1024), dsize) );
+     Log("ServerHTTPPreCheck: wait for size: %I64d - DONE", min( (256*1024), dsize) );
    #endif
    if (m_llSeekPos) {
      add_to_downloadqueue( max(0, dsize-(256*1024) ) );
      WaitForSize( max(0, dsize-(256*1024) ) , dsize);
      #ifdef _DEBUG
-       Log("ServerPreCheck: wait for size: %I64d - DONE", max(0, dsize-(256*1024) ) );
+       Log("ServerHTTPPreCheck: wait for size: %I64d - DONE", max(0, dsize-(256*1024) ) );
      #endif
    }
-   Log("\n\nServerPreCheck: PREBUFFER of file done\n");
+   Log("\n\nServerHTTPPreCheck: PREBUFFER of file done\n");
 
    runtime = GetSystemTimeInMS()-runtime;
    // 512kb download
    if (runtime > 15000) {
-	 Log("ServerPreCheck: Remote Server is too slow to render anything! Download of 500kb took: %I64d s", (LONGLONG)runtime/1000);
+	 Log("ServerHTTPPreCheck: Remote Server is too slow to render anything! Download of 500kb took: %I64d s", (LONGLONG)runtime/1000);
 	 return E_FAIL;
    }
 
@@ -729,18 +866,24 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName, string& filetype)
   add_headers = "";
   winversion.clear();
   ssupp_waitall = TRUE;
-	m_szTempFile[0] = TEXT('0');
+  isrtmp = FALSE;
+  m_szTempFile[0] = TEXT('0');
 
-	GetOperationSystemName(winversion);
-	Log("CHttpStream::Initialize: Windows Version: %d.%d.%d", winversion[0], winversion[1], winversion[2]);
-	if ( (winversion[0] < 5) ||
-		 (winversion[0] == 5 && winversion[1] <= 1) )
-	{
-	  ssupp_waitall = FALSE;
-	}
+  GetOperationSystemName(winversion);
+  Log("CHttpStream::Initialize: Windows Version: %d.%d.%d", winversion[0], winversion[1], winversion[2]);
+  if ( (winversion[0] < 5) ||
+    (winversion[0] == 5 && winversion[1] <= 1) )
+  {
+    ssupp_waitall = FALSE;
+  }
 
   string searcher = lpszFileName;
   string::size_type pos = 0;
+
+  if (searcher.find("rtmp://", 0) != string::npos) {
+    Log("CHttpStream::Initialize: rtmp URL found");
+    isrtmp = TRUE;
+  }
 
   if ((pos = searcher.find("&&&&", 0)) != string::npos) {
     string url = searcher.substr(0, pos);
@@ -748,7 +891,7 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName, string& filetype)
    	strcpy(m_FileName, url.c_str());
 
     add_headers = searcher.substr(pos+4, searcher.length()-pos-4);
-		UrlDecode(add_headers);
+	UrlDecode(add_headers);
     Log("CHttpStream::Initialize: Found request with additional headers. URL: %s Headers: %s", m_FileName, add_headers.c_str());
     stringreplace(add_headers, "\\r", "\r");
     stringreplace(add_headers, "\r", "");
@@ -759,23 +902,29 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName, string& filetype)
   	strcpy(m_FileName, lpszFileName);
   }
 
-  DbgLog((LOG_ERROR,0,TEXT("ServerPreCheck start")));
-  hr = ServerPreCheck(m_FileName, filetype);
-  DbgLog((LOG_ERROR,0,TEXT("ServerPreCheck end")));
+  if (isrtmp) {
+    DbgLog((LOG_ERROR,0,TEXT("ServerRTMPPreCheck start")));
+    hr = ServerRTMPPreCheck(m_FileName, filetype);
+    DbgLog((LOG_ERROR,0,TEXT("ServerRTMPPreCheck end")));
+  } else {
+    DbgLog((LOG_ERROR,0,TEXT("ServerHTTPPreCheck start")));
+    hr = ServerHTTPPreCheck(m_FileName, filetype);
+    DbgLog((LOG_ERROR,0,TEXT("ServerHTTPPreCheck end")));
+  }
   if (FAILED(hr))
   {
-    DbgLog((LOG_ERROR,0,TEXT("ServerPreCheck failed")));
     Log("ServerPreCheck failed!");
     return hr;
   }
 
-	// only do this if seeking is supported - otherwise
-	// the download is still running from the precheck
-	// also do this - otherwise some programs who query for buffering
-	// will wait forever
+  // only do this if seeking is supported - otherwise
+  // the download is still running from the precheck
+  // also do this - otherwise some programs who query for buffering
+  // will wait forever
   if (m_llSeekPos) {
+ 	LONGLONG realstartpos;
+
     Log("Seeking is supported - start download");
- 	  LONGLONG realstartpos;
     // get real first downloadpos
     israngeavail_nextstart(0, m_llDownloadLength, &realstartpos);
     if (realstartpos >= 0 && realstartpos < m_llDownloadLength) {

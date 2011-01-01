@@ -1,6 +1,6 @@
 prefix=@prefix@
 exec_prefix=${prefix}
-libdir=@libdir@
+libdir=${exec_prefix}/lib
 incdir=${prefix}/include
 
 Name: librtmp
