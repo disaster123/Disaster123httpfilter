@@ -1,4 +1,11 @@
 
+#include "..\librtmp_win32\librtmp\amf.h"
+#include "..\librtmp_win32\librtmp\rtmp.h"
+// this are special av_params for rtmp
+#define SAVC(x)	static const AVal av_##x = AVC(#x)
+SAVC(onMetaData);
+SAVC(filesize);
+
 extern void Log(const char *fmt, ...);
 
 static void GetOperationSystemName(vector<int>& winversion)
@@ -16,6 +23,54 @@ static void GetOperationSystemName(vector<int>& winversion)
   winversion[2] = osinfo.dwBuildNumber; 
 
   return;
+}
+
+static double rtmp_get_double_from_metadata(char *metaheader, uint32_t size, char *name)
+{
+  AMFObject obj;
+  AVal metastring;
+  double r = -1;
+
+  if (size == 0) {
+    return r;
+  }
+
+  int nRes = AMF_Decode(&obj, metaheader, size, FALSE);
+  if (nRes < 0)
+  {
+      return r;
+  }
+  AMFProp_GetString(AMF_GetProp(&obj, NULL, 0), &metastring);
+  if (AVMATCH(&metastring, &av_onMetaData))
+  {
+    AMFObjectProperty prop;
+    AVal search;
+    search.av_val = name;
+    search.av_len = strlen(name);
+    if (RTMP_FindFirstMatchingProperty(&obj, &search, &prop)) {
+      r = prop.p_vu.p_number;
+    }
+  }
+
+  AMF_Reset(&obj);
+
+  return r;
+}
+
+static int rtmp_recv_wait_all(RTMP *rtmp, char* buffer, size_t length)
+{
+   int remaining = length;
+   int offset = 0;
+   int bytesread = 0;
+
+   while ( (remaining>0) && ((bytesread = RTMP_Read(rtmp, &(buffer[offset]), remaining)) > 0) ){
+     offset += bytesread;
+     remaining -= bytesread;
+   }
+   if ( bytesread < 0 ){
+      return bytesread;
+   }
+ return offset;
 }
 
 static int recv_wait_all(int sock, char* buffer, size_t length, BOOL msg_waitall_support)

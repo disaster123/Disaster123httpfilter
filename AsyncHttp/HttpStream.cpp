@@ -32,7 +32,6 @@
 #include "..\Base\asyncio.h"
 #include "HttpStream.h"
 #include "..\Base\HTTPUtilities.h"
-#include "..\librtmp_win32\librtmp\rtmp.h"
 
 #include "AutoLockDebug.h"
 #include "..\Base\alloctracing.h"
@@ -65,7 +64,8 @@ float         m_lldownspeed;
 vector<BOOL>  CHUNK_V; // this is the HAVING CHUNK Vector :-)
 string        add_headers;
 vector<int>   winversion;
-BOOL          isrtmp = FALSE;
+BOOL          is_rtmp = FALSE;
+BOOL          rtmp_filesize_set = FALSE;
 BOOL          ssupp_waitall = TRUE;
 #pragma endregion
 
@@ -79,8 +79,8 @@ BOOL israngeavail(LONGLONG start, LONGLONG length)
     int chunkend = getchunkpos(start+length-1);
 
     if (chunkend > (int)CHUNK_V.size()) {
-        Log("israngeavail: !!! chunkend is bigger than CHUNK Vector");
-        return FALSE;
+      Log("israngeavail: !!! chunkend is bigger than CHUNK Vector chunkend: %d Vector: %d", chunkend, CHUNK_V.size());
+      return FALSE;
     }
     int i;
     for (i = chunkstart; i <= chunkend; i++) {
@@ -101,7 +101,7 @@ void israngeavail_nextstart(LONGLONG start, LONGLONG end, LONGLONG* newstartpos)
     *newstartpos = -1;
 
     if (chunkend > (int)CHUNK_V.size()) {
-        Log("israngeavail_nextstart: !!! chunkend is bigger than CHUNK Vector");
+        Log("israngeavail_nextstart: !!! chunkend is bigger than CHUNK Vector chunkend: %d Vector: %d", chunkend, CHUNK_V.size());
         return;
     }
     for (int i = chunkstart; i <= chunkend; i++) {
@@ -123,6 +123,33 @@ string DownloaderThread_GetDownloaderMsg()
   string ret = m_DownloaderQueue.front();
   m_DownloaderQueue.pop();
   return ret;
+}
+
+HRESULT SetNewFileSize(LONGLONG dsize)
+{
+	DWORD cch = 0;
+
+    if (!DeviceIoControl(m_hFileWrite, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &cch, NULL))
+    {
+		Log("SetNewFileSize: Couldn't set sparse - working without sparse");
+	}
+
+    LARGE_INTEGER fsize;
+    fsize.QuadPart = dsize;
+    if (SetFilePointerEx(m_hFileWrite, fsize, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
+	   Log("SetNewFileSize: Couldn't SetFilePointerEx of file %I64d", dsize);
+       return E_FAIL;
+    }
+    if (!SetEndOfFile(m_hFileWrite)) {
+	   Log("SetNewFileSize: Couldn't set end of file %I64d", dsize);
+       return E_FAIL;
+    }
+
+    // set chunk_v size
+    Log("SetNewFileSize: %s Chunks: %d", m_szTempFile, getchunkpos(dsize)+1);
+    CHUNK_V.resize(getchunkpos(dsize)+1, FALSE);
+
+return S_OK;
 }
 
 HRESULT CreateTempFile(LONGLONG dsize)
@@ -214,29 +241,8 @@ HRESULT CreateTempFile(LONGLONG dsize)
 		return HRESULT_FROM_WIN32(GetLastError());
 	}
 
-    if (!DeviceIoControl(m_hFileWrite, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &cch, NULL))
-    {
-		Log("CreateTempFile: Couldn't set sparse - working without sparse");
-	}
-
-    LARGE_INTEGER fsize;
-    fsize.QuadPart = dsize;
-    if (SetFilePointerEx(m_hFileWrite, fsize, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
-	   Log("CreateTempFile: Couldn't SetFilePointerEx of file %I64d", dsize);
-       return E_FAIL;
-    }
-    if (!SetEndOfFile(m_hFileWrite)) {
-	   Log("CreateTempFile: Couldn't set end of file %I64d", dsize);
-       return E_FAIL;
-    }
-
-    // set chunk_v size
-    Log("CreateTempFile: %s Chunks: %d", m_szTempFile, getchunkpos(dsize)+1);
-    CHUNK_V.resize(getchunkpos(dsize)+1, FALSE);
-
-return S_OK;
+    return SetNewFileSize(dsize);
 }
-
 
 DWORD DownloaderThread_WriteData(LONGLONG startpos, char *buffer, int buffersize)
 {
@@ -350,53 +356,59 @@ UINT CALLBACK DownloaderThread(void* param)
        // reinit all variables for THIS download
        DownloaderThread_initvars(startpos);
 
-	   // get Host, Path and Port from URL
-       if (GetHostAndPath(url, &szHost, &szPath, &szPort) != 0)
+       if (is_rtmp) {
+         // do nothing here atm
+       }
+       else 
        {
+  	     // get Host, Path and Port from URL
+         if (GetHostAndPath(url, &szHost, &szPath, &szPort) != 0)
+         {
 		   SAFE_DELETE_ARRAY(url);
 		   SAFE_DELETE_ARRAY(szHost);
 		   SAFE_DELETE_ARRAY(szPath);
 		   Log("DownloaderThread: GetHostAndPath Error");
 		   break;
-       }
+         }
 
-	   Socket = Initialize_connection(szHost, szPort);
-	   if (Socket == -1) {
+  	     Socket = Initialize_connection(szHost, szPort);
+	     if (Socket == -1) {
 		   SAFE_DELETE_ARRAY(url);
 		   SAFE_DELETE_ARRAY(szHost);
 		   SAFE_DELETE_ARRAY(szPath);
 		   Log("DownloaderThread: Socket could not be initialised.");
 		   break;
-	   }
+	     }
 
-	   char *request = buildrequeststring(szHost, szPort, szPath, startpos, m_llSeekPos, add_headers);
+	     char *request = buildrequeststring(szHost, szPort, szPath, startpos, m_llSeekPos, add_headers);
 
-	   try {
-  	      send_to_socket(Socket, request, strlen(request));
-	   } catch(exception ex) {
-          Log("DownloaderThread: Fehler beim senden des Requests %s!", ex);
-          SAFE_DELETE_ARRAY(request);
-		  break;
-	   }
-       SAFE_DELETE_ARRAY(request);
+	     try {
+  	       send_to_socket(Socket, request, strlen(request));
+	     } catch(exception ex) {
+           Log("DownloaderThread: Fehler beim senden des Requests %s!", ex);
+           SAFE_DELETE_ARRAY(request);
+		   break;
+	     }
+         SAFE_DELETE_ARRAY(request);
 
-       int statuscode = 999;
-       string headers;
-       LONGLONG NULLL;
-       GetHTTPHeaders(Socket, &NULLL, &statuscode, headers);
-       if (statuscode != 206 && statuscode != 200) {
+         int statuscode = 999;
+         string headers;
+         LONGLONG NULLL;
+         GetHTTPHeaders(Socket, &NULLL, &statuscode, headers);
+         if (statuscode != 206 && statuscode != 200) {
            Log("DownloaderThread: Statuscode not OK: %d - retry download", statuscode);
            char msg[500];
            sprintf_s(msg, sizeof(msg), "%s || %I64d", url, startpos_orig);
            m_DownloaderQueue.push((string)msg);
            continue;
-       }
+         }
 
-       Log("DownloaderThread: Headers complete Downloadsize: %I64d", m_llDownloadLength);
+         Log("DownloaderThread: Headers complete Downloadsize: %I64d", m_llDownloadLength);
 
-	   SAFE_DELETE_ARRAY(szHost);
-	   SAFE_DELETE_ARRAY(szPath);
-      } // end CAutoLock lock(m_CritSec);
+	     SAFE_DELETE_ARRAY(szHost);
+	     SAFE_DELETE_ARRAY(szPath);
+        } // end CAutoLock lock(m_CritSec);
+    }
 
 	   //char buffer[1024*128];
 	   //unsigned int buflen = sizeof(buffer)/8; // use 16kb of the buffer as default
@@ -410,8 +422,13 @@ UINT CALLBACK DownloaderThread(void* param)
        LONGLONG time_end;
        buffer[0] = '\0';
 	   do {
-		   // MSG_WAITALL is broken / not available on Win XP to we've to use our own function
-		   bytesrec = recv_wait_all(Socket, buffer, sizeof(buffer), ssupp_waitall);
+           if (is_rtmp) {
+             bytesrec = rtmp_recv_wait_all(&rtmp, buffer, sizeof(buffer));
+           } else {
+             // STEFAN
+  		     // MSG_WAITALL is broken / not available on Win XP to we've to use our own function
+		     bytesrec = recv_wait_all(Socket, buffer, sizeof(buffer), ssupp_waitall);
+           }
 		   recv_calls++;
 
            // Bytes received write them down
@@ -419,14 +436,20 @@ UINT CALLBACK DownloaderThread(void* param)
      		   bytesrec_sum += bytesrec;
 
                if (bytesrec < CHUNK_SIZE) {
-                   if ( (m_llDownloadPos+bytesrec) == m_llDownloadLength )  {
-                       Log("DownloaderThread: got %d bytes instead of a full buffer of size %I64d - but this is OK it is END of file", bytesrec, (LONGLONG)CHUNK_SIZE);
-                   } else {
-                       Log("DownloaderThread: got %d bytes instead of a full buffer of size %I64d - restart download at pos %I64d", bytesrec, (LONGLONG)CHUNK_SIZE, m_llDownloadPos);
-				       char msg[500];
-                       sprintf_s(msg, sizeof(msg), "%s || %I64d", url, m_llDownloadPos);
-				       m_DownloaderQueue.push((string)msg);
-                   }
+                 if (is_rtmp && !rtmp_filesize_set) {
+                   Log("DownloaderThread: got %d bytes instead of a full buffer of size %I64d - but IT COULD BE OK rtmp filesize not set", bytesrec, (LONGLONG)CHUNK_SIZE);
+                 } else if (is_rtmp && 
+                       (getchunkpos(m_llDownloadPos+bytesrec) >= (getchunkpos(m_llDownloadLength)-1)) ) {
+                   // RTMP filesize does not MATCH exactly the filepos
+                   Log("DownloaderThread: got %d bytes instead of a full buffer of size %I64d - but this is OK we are near END of RTMP file", bytesrec, (LONGLONG)CHUNK_SIZE);
+                 } else if ( (m_llDownloadPos+bytesrec) == m_llDownloadLength )  {
+                   Log("DownloaderThread: got %d bytes instead of a full buffer of size %I64d - but this is OK it is END of file", bytesrec, (LONGLONG)CHUNK_SIZE);
+                 } else {
+                   Log("DownloaderThread: got %d bytes instead of a full buffer of size %I64d - restart download at pos %I64d", bytesrec, (LONGLONG)CHUNK_SIZE, m_llDownloadPos);
+				   char msg[500];
+                   sprintf_s(msg, sizeof(msg), "%s || %I64d", url, m_llDownloadPos);
+				   m_DownloaderQueue.push((string)msg);
+                 }
                }
 
                // check if the position we want to write is already there and Queue is 0
@@ -470,7 +493,7 @@ UINT CALLBACK DownloaderThread(void* param)
 			   }
 		   }
 
-	   } while (bytesrec > 0 && m_DownloaderShouldRun);
+       } while (bytesrec > 0 && m_DownloaderShouldRun && (!is_rtmp || (RTMP_IsConnected(&rtmp) && !RTMP_IsTimedout(&rtmp))) );
 	   SAFE_DELETE_ARRAY(url);
 
 	   if ((m_llDownloadStart+bytesrec_sum) == m_llDownloadLength) {
@@ -483,7 +506,9 @@ UINT CALLBACK DownloaderThread(void* param)
        }
 
 	   // Verbindung beenden
-	   closesocket(Socket);
+       if (!is_rtmp) {
+  	     closesocket(Socket);
+       }
 	   SAFE_DELETE_ARRAY(url);
     }
     if ( m_DownloaderShouldRun && (m_DownloaderQueue.size() == 0)) {
@@ -555,9 +580,10 @@ CHttpStream::~CHttpStream()
       WaitForSingleObject(m_hDownloader, INFINITE);	
       m_hDownloader = NULL;
     }
-    if (isrtmp) {
+    if (is_rtmp) {
       RTMP_Close(&rtmp);
-      isrtmp = FALSE;
+      is_rtmp = FALSE;
+      rtmp_filesize_set = FALSE;
     }
 
     Log("~CHttpStream() StopLogger...");
@@ -638,10 +664,6 @@ HRESULT CHttpStream::ServerRTMPPreCheck(char* url, string& filetype)
     strcpy(tcUrl.av_val, str);
   }
 
-  swfHash.av_len = 0;
-  swfHash.av_val = NULL;
-  swfSize = 0;
-
   Log("RTMP Options: detected tcURL: %s prot: %s hostname: %.*s port: %d sockshost: %s playpath: %s swfUrl: %s pageUrl: %s app: %.*s auth: %s swfHash: %s swfSize: %d flashVer: %s subscribepath: %s dSeek: %d dStopOffset: %d bLiveStream: %d timeout: %d", 
       tcUrl.av_val, RTMPProtocolStringsLower[protocol], 
       hostname.av_len, hostname.av_val, port, sockshost.av_val, playpath.av_val,
@@ -663,50 +685,42 @@ HRESULT CHttpStream::ServerRTMPPreCheck(char* url, string& filetype)
     Log("CHttpStream::ServerRTMPPreCheck: RTMP_Connect not possible to: %s", url);
     return E_FAIL;
   }
-  Log("CHttpStream::ServerRTMPPreCheck: RTMP_Connect successfull - duration: %f", rtmp.m_fDuration);
 
   if (!RTMP_ConnectStream(&rtmp, 0))
   {
     Log("CHttpStream::ServerRTMPPreCheck: RTMP_ConnectStream not possible to: %s", url);
     return E_FAIL;
   }
-  Log("CHttpStream::ServerRTMPPreCheck: RTMP_ConnectStream successfull - duration: %f", rtmp.m_fDuration);
-
-
-  int bufferSize = 64 * 1024;
-  char *buffer = (char *) malloc(bufferSize);
-  int nRead = 0;
-  do
-  {
-    nRead = RTMP_Read(&rtmp, buffer, bufferSize);
-    Log("CHttpStream::nread: %d", nRead);
-    Sleep(1000);
-  } while (nRead > -1 && RTMP_IsConnected(&rtmp) && !RTMP_IsTimedout(&rtmp));
-  SAFE_DELETE_ARRAY(buffer);
-
-  Log("CHttpStream::ServerRTMPPreCheck: RTMP Connection successfull - duration: %f 2.: %f Con: %s Timeout: %s", 
-    rtmp.m_fDuration,
-    RTMP_GetDuration(&rtmp),
-    (RTMP_IsConnected(&rtmp) ? "connected" : "unconnected"),
-    (RTMP_IsTimedout(&rtmp) ? "IsTimedout" : "Is NOT Timedout")
-    );
-
-  return E_FAIL;
 
   m_llSeekPos = FALSE;
-  //m_llDownloadLength = dsize;
+  // we assume a min of 1 hour and kbs 2000
+  m_llDownloadLength = 2000 * 60 * 60;
 
-  //HRESULT hr = CreateTempFile(dsize);
-  HRESULT hr = CreateTempFile(1);
+  HRESULT hr = CreateTempFile(m_llDownloadLength);
   if (FAILED(hr) || m_hFileWrite == INVALID_HANDLE_VALUE || m_hFileRead == INVALID_HANDLE_VALUE) {
-    Log("ServerHTTPPreCheck: CreateTempFile failed!");
+    Log("CHttpStream::ServerRTMPPreCheck: CreateTempFile failed!");
     return E_FAIL;
   }
 
-  #ifdef _DEBUG
-    Log("ServerHTTPPreCheck: added queue download 0");
-  #endif
   add_to_downloadqueue( 0 );
+  // we should have the metadata at this point
+  WaitForSize(0, 4 * 64 * 1024 );
+  // if the header is still 0 wait again for the same size
+  if (rtmp.m_read.nMetaHeaderSize == 0) {
+    WaitForSize(0, 4 * 64 * 1024 * 2 );
+  }
+  Log("CHttpStream::ServerRTMPPreCheck: waiting for MetaHeader done - Headersize: %d", rtmp.m_read.nMetaHeaderSize);
+
+  double filesize = rtmp_get_double_from_metadata(rtmp.m_read.metaHeader, rtmp.m_read.nMetaHeaderSize, "filesize");
+  Log("CHttpStream::ServerRTMPPreCheck: got Filesize: %f", filesize);
+  if (filesize > 0) {
+    m_llDownloadLength = (LONGLONG)filesize;
+    SetNewFileSize((LONGLONG)filesize);
+    rtmp_filesize_set = TRUE;
+  } else {
+    Log("CHttpStream::ServerRTMPPreCheck: Error got no valid filesize: %f", filesize);
+    return E_FAIL;
+  }
 
   return S_OK;
 }
@@ -870,7 +884,8 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName, string& filetype)
   add_headers = "";
   winversion.clear();
   ssupp_waitall = TRUE;
-  isrtmp = FALSE;
+  is_rtmp = FALSE;
+  rtmp_filesize_set = FALSE;
   m_szTempFile[0] = TEXT('0');
 
   GetOperationSystemName(winversion);
@@ -886,7 +901,7 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName, string& filetype)
 
   if (searcher.find("rtmp://", 0) != string::npos) {
     Log("CHttpStream::Initialize: rtmp URL found");
-    isrtmp = TRUE;
+    is_rtmp = TRUE;
   }
 
   if ((pos = searcher.find("&&&&", 0)) != string::npos) {
@@ -906,7 +921,7 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName, string& filetype)
   	strcpy(m_FileName, lpszFileName);
   }
 
-  if (isrtmp) {
+  if (is_rtmp) {
     DbgLog((LOG_ERROR,0,TEXT("ServerRTMPPreCheck start")));
     hr = ServerRTMPPreCheck(m_FileName, filetype);
     DbgLog((LOG_ERROR,0,TEXT("ServerRTMPPreCheck end")));

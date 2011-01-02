@@ -103,89 +103,89 @@ public:
 		  {
 		  	GUID subtype = MEDIASUBTYPE_NULL;
 	  		TCHAR *szExtension = PathFindExtension(OLE2T(lpwszFileName));
-        TCHAR *FileName = OLE2T(lpwszFileName);
+            TCHAR *FileName = OLE2T(lpwszFileName);
 
-        if ( (filetype.compare("video/x-msvideo") == 0) || 
-             (szExtension && _tcscmp(szExtension, TEXT(".avi")) == 0) ||
-             (_tcsstr(FileName, ".avi?") > 0) ||
-             (_tcsstr(FileName, ".avi&&&&") > 0) )
+            if ( (filetype.compare("video/x-msvideo") == 0) || 
+                 (szExtension && _tcscmp(szExtension, TEXT(".avi")) == 0) ||
+                 (_tcsstr(FileName, ".avi?") > 0) ||
+                 (_tcsstr(FileName, ".avi&&&&") > 0) )
 	   		{
-			  	subtype = MEDIASUBTYPE_Avi;
-          Log("subtype MEDIASUBTYPE_Avi / avi");
-			  }
-			  else if ( (filetype.compare("video/divx") == 0) || 
-                  (szExtension && _tcscmp(szExtension, TEXT(".divx")) == 0) ||
-                  (_tcsstr(FileName, ".divx?") > 0) ||
-                  (_tcsstr(FileName, ".divx&&&&") > 0) )
-			  {
-				  subtype = MEDIASUBTYPE_Avi;
-          Log("subtype MEDIASUBTYPE_Avi / divx");
-			  }
-			  else if ( (filetype.compare("video/x-matroska") == 0) || 
-                  (szExtension && _tcscmp(szExtension, TEXT(".mkv")) == 0) ||
-                  (_tcsstr(FileName, ".mkv?") > 0) ||
-                  (_tcsstr(FileName, ".mkv&&&&") > 0) )
-			  {
-				  subtype = MEDIASUBTYPE_H264;
-          Log("subtype MEDIASUBTYPE_H264 / mkv");
-			  }
-			  else if ( (filetype.compare("video/mp4") == 0) || 
-                  (szExtension && _tcscmp(szExtension, TEXT(".mp4")) == 0) ||
-                  (_tcsstr(FileName, ".mp4?") > 0) ||
-                  (_tcsstr(FileName, ".mp4&&&&") > 0) )
-			  {
-				  subtype = MEDIASUBTYPE_MP4;
-          Log("subtype MEDIASUBTYPE_MP4 / mp4");
-			  }
-			  else if ( (filetype.compare("video/x-flv") == 0) || 
+			  subtype = MEDIASUBTYPE_Avi;
+              Log("subtype MEDIASUBTYPE_Avi / avi");
+			}
+			else if ( (filetype.compare("video/divx") == 0) || 
+                    (szExtension && _tcscmp(szExtension, TEXT(".divx")) == 0) ||
+                    (_tcsstr(FileName, ".divx?") > 0) ||
+                    (_tcsstr(FileName, ".divx&&&&") > 0) )
+			{
+			  subtype = MEDIASUBTYPE_Avi;
+              Log("subtype MEDIASUBTYPE_Avi / divx");
+			}
+			else if ( (filetype.compare("video/x-matroska") == 0) || 
+                    (szExtension && _tcscmp(szExtension, TEXT(".mkv")) == 0) ||
+                    (_tcsstr(FileName, ".mkv?") > 0) ||
+                    (_tcsstr(FileName, ".mkv&&&&") > 0) )
+			{
+			  subtype = MEDIASUBTYPE_H264;
+              Log("subtype MEDIASUBTYPE_H264 / mkv");
+			}
+			else if ( (filetype.compare("video/mp4") == 0) || 
+                      (szExtension && _tcscmp(szExtension, TEXT(".mp4")) == 0) ||
+                      (_tcsstr(FileName, ".mp4?") > 0) ||
+                      (_tcsstr(FileName, ".mp4&&&&") > 0) )
+			{
+			  subtype = MEDIASUBTYPE_MP4;
+              Log("subtype MEDIASUBTYPE_MP4 / mp4");
+			}
+			else if ( (filetype.compare("video/x-flv") == 0) || 
                   (filetype.compare("video/flv") == 0) ||
                   (szExtension && _tcscmp(szExtension, TEXT(".flv")) == 0) ||
                   (_tcsstr(FileName, ".flv?") > 0) ||
                   (_tcsstr(FileName, ".flv&&&&") > 0) )
-			  {
-				  subtype = MEDIASUBTYPE_FLV;
-          Log("subtype MEDIASUBTYPE_FLV / flv");
-			  }
-			  else
+			{
+			  subtype = MEDIASUBTYPE_FLV;
+              Log("subtype MEDIASUBTYPE_FLV / flv");
+			}
+			else
 		  	{
-				  Log("subtype MEDIASUBTYPE_NULL / Wildcard");
-			  }
+			  Log("subtype MEDIASUBTYPE_NULL / Wildcard");
+			}
 
-			   cmt.SetType(&MEDIATYPE_Stream);
-         cmt.SetSubtype(&subtype);
+			cmt.SetType(&MEDIATYPE_Stream);
+            cmt.SetSubtype(&subtype);
       }
-      else 
-		  {
-  		  HRESULT hr = CopyMediaType(&cmt, pmt);
-   			if (FAILED(hr))
-			  {
-				  return hr;
-		  	}
+      else
+      {
+  	    HRESULT hr = CopyMediaType(&cmt, pmt);
+   		if (FAILED(hr))
+		{
+		  return hr;
+	  	}
       }
 
       m_pFileName = new WCHAR[cch];
       if (m_pFileName!=NULL)
 			CopyMemory(m_pFileName, lpwszFileName, cch*sizeof(WCHAR));
 
-  		// this is how MS async filter does it
-  		cmt.bFixedSizeSamples = TRUE;
-  		cmt.bTemporalCompression = FALSE;
-      cmt.lSampleSize = 1;
+  	   // this is how MS async filter does it
+  	   cmt.bFixedSizeSamples = TRUE;
+  	   cmt.bTemporalCompression = FALSE;
+       cmt.lSampleSize = 1;
 
-	  	//m_mt = cmt;
-	  	hr = CopyMediaType(&m_mt, &cmt);
-	  	if (FAILED(hr))
-	  	{
-		  	FreeMediaType(cmt);
-		  	return hr;
-		  }
+	   //m_mt = cmt;
+	   hr = CopyMediaType(&m_mt, &cmt);
+	   if (FAILED(hr))
+	   {
+	  	 FreeMediaType(cmt);
+	   	 return hr;
+	   }
 
-  		FreeMediaType(cmt);
-      return S_OK;
+  	   FreeMediaType(cmt);
+
+     return S_OK;
     }
 
     // GetCurFile: Returns the name and media type of the current file.
-
     STDMETHODIMP GetCurFile(LPOLESTR * ppszFileName, AM_MEDIA_TYPE *pmt)
     {
         CheckPointer(ppszFileName, E_POINTER);

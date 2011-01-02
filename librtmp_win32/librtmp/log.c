@@ -49,7 +49,7 @@ static void rtmp_log_default(int level, const char *format, va_list vl)
 {
 	char str[MAX_PRINT_LEN]="";
 
-#if 1
+#if 0
     if (!fmsg) {
       fmsg = fopen("C:\\Temp\\RTMP.log", "w");
       RTMP_debuglevel = RTMP_LOGDEBUG;

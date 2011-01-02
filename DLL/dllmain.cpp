@@ -29,7 +29,7 @@
 using namespace std;
 
 const WCHAR *szAsyncHttp = L"Disaster123's MP Alternate Source Filter";
-const char *VERSION = "0.21";
+const char *VERSION = "0.30";
 
 //
 // Setup data for filter registration
