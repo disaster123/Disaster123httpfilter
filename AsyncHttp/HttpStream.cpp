@@ -704,23 +704,27 @@ HRESULT CHttpStream::ServerRTMPPreCheck(char* url, string& filetype)
 
   add_to_downloadqueue( 0 );
   // we should have the metadata at this point
-  WaitForSize(0, 4 * 64 * 1024 );
+  WaitForSize(0, 4 * CHUNK_SIZE );
   // if the header is still 0 wait again for the same size
   if (rtmp.m_read.nMetaHeaderSize == 0) {
-    WaitForSize(0, 4 * 64 * 1024 * 2 );
+    WaitForSize(0, 4 * CHUNK_SIZE * 2 );
   }
-  Log("CHttpStream::ServerRTMPPreCheck: waiting for MetaHeader done - Headersize: %d", rtmp.m_read.nMetaHeaderSize);
+  Log("CHttpStream::ServerRTMPPreCheck: waiting for MetaHeader done - Size: %d", rtmp.m_read.nMetaHeaderSize);
 
   double filesize = rtmp_get_double_from_metadata(rtmp.m_read.metaHeader, rtmp.m_read.nMetaHeaderSize, "filesize");
   Log("CHttpStream::ServerRTMPPreCheck: got Filesize: %f", filesize);
-  if (filesize > 0) {
-    m_llDownloadLength = (LONGLONG)filesize;
-    SetNewFileSize((LONGLONG)filesize);
-    rtmp_filesize_set = TRUE;
-  } else {
-    Log("CHttpStream::ServerRTMPPreCheck: Error got no valid filesize: %f", filesize);
-    return E_FAIL;
+  if (filesize <= 0) {
+    // calculate with bitrate 2000
+    filesize = 2000 * rtmp.m_fDuration;
+    Log("CHttpStream::ServerRTMPPreCheck: Calculated size: %f from duration: %f", filesize, rtmp.m_fDuration);
+    if (rtmp.m_fDuration <= 0) {
+      Log("CHttpStream::ServerRTMPPreCheck: Duration is not OK", filesize);
+      return E_FAIL;
+    }
   }
+  m_llDownloadLength = (LONGLONG)filesize;
+  SetNewFileSize((LONGLONG)filesize);
+  rtmp_filesize_set = TRUE;
 
   return S_OK;
 }
