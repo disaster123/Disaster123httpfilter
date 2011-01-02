@@ -2634,6 +2634,16 @@ HandleMetadata(RTMP *r, char *body, unsigned int len)
       /* Show metadata */
       RTMP_Log(RTMP_LOGINFO, "Metadata:");
       DumpMetaData(&obj);
+
+      // added by disaster123 to always store the metadata
+      if ((r->m_read.nMetaHeaderSize == 0) || (r->m_read.nMetaHeaderSize != len) || (memcmp(r->m_read.metaHeader, body, r->m_read.nMetaHeaderSize) != 0)) {
+        if (r->m_read.metaHeader) 
+          free(r->m_read.metaHeader);
+        r->m_read.metaHeader = (char *) malloc(len);
+        memcpy(r->m_read.metaHeader, body, len);
+        r->m_read.nMetaHeaderSize = len;
+      }
+
       if (RTMP_FindFirstMatchingProperty(&obj, &av_duration, &prop))
 	{
 	  r->m_fDuration = prop.p_vu.p_number;
