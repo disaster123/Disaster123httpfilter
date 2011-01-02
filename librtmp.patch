@@ -1,7 +1,7 @@
-Index: log.c
+Index: librtmp/log.c
 ===================================================================
---- log.c	(revision 191)
-+++ log.c	(working copy)
+--- librtmp/log.c	(revision 195)
++++ librtmp/log.c	(working copy)
 @@ -49,6 +49,15 @@
  {
  	char str[MAX_PRINT_LEN]="";
@@ -18,11 +18,11 @@ Index: log.c
  	vsnprintf(str, MAX_PRINT_LEN-1, format, vl);
  
  	/* Filter out 'no-name' */
-Index: rtmp.c
+Index: librtmp/rtmp.c
 ===================================================================
---- rtmp.c	(revision 191)
-+++ rtmp.c	(working copy)
-@@ -1244,11 +1244,6 @@
+--- librtmp/rtmp.c	(revision 195)
++++ librtmp/rtmp.c	(working copy)
+@@ -1247,11 +1247,6 @@
    return bHasMediaPacket;
  }
  
@@ -34,7 +34,7 @@ Index: rtmp.c
  static int
  ReadN(RTMP *r, char *buffer, int n)
  {
-@@ -1311,9 +1316,6 @@
+@@ -1319,9 +1314,6 @@
  	    SendBytesReceived(r);
  	}
        /*RTMP_Log(RTMP_LOGDEBUG, "%s: %d bytes\n", __FUNCTION__, nBytes); */
@@ -44,7 +44,7 @@ Index: rtmp.c
  
        if (nBytes == 0)
  	{
-@@ -3519,10 +3527,6 @@
+@@ -3536,10 +3528,6 @@
  {
    int rc;
  
@@ -55,18 +55,3 @@ Index: rtmp.c
  #if defined(CRYPTO) && !defined(NO_SSL)
    if (sb->sb_ssl)
      {
-Index: rtmp_sys.h
-===================================================================
---- rtmp_sys.h	(revision 191)
-+++ rtmp_sys.h	(working copy)
-@@ -35,6 +35,10 @@
- #else /* !_XBOX */
- #include <winsock2.h>
- #include <ws2tcpip.h>
-+#define snprintf _snprintf
-+#define strcasecmp stricmp
-+#define strncasecmp strnicmp
-+#define vsnprintf _vsnprintf
- #endif
- 
- #define GetSockError()	WSAGetLastError()
