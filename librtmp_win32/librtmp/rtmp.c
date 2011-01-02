@@ -1019,6 +1019,9 @@ RTMP_ToggleStream(RTMP *r)
 
   if (!r->m_pausing)
     {
+      if (RTMP_IsTimedout(r) && r->m_read.status == RTMP_READ_EOF)
+        r->m_read.status = 0;
+
       res = RTMP_SendPause(r, TRUE, r->m_pauseStamp);
       if (!res)
 	return res;
@@ -1244,6 +1247,11 @@ RTMP_ClientPacket(RTMP *r, RTMPPacket *packet)
   return bHasMediaPacket;
 }
 
+#ifdef _DEBUG
+extern FILE *netstackdump;
+extern FILE *netstackdump_read;
+#endif
+
 static int
 ReadN(RTMP *r, char *buffer, int n)
 {
@@ -1311,6 +1319,9 @@ ReadN(RTMP *r, char *buffer, int n)
 	    SendBytesReceived(r);
 	}
       /*RTMP_Log(RTMP_LOGDEBUG, "%s: %d bytes\n", __FUNCTION__, nBytes); */
+#ifdef _DEBUG
+      fwrite(ptr, 1, nBytes, netstackdump_read);
+#endif
 
       if (nBytes == 0)
 	{
@@ -2781,11 +2792,17 @@ HandleCtrl(RTMP *r, const RTMPPacket *packet)
   if (nType == 0x1A)
     {
       RTMP_Log(RTMP_LOGDEBUG, "%s, SWFVerification ping received: ", __FUNCTION__);
+      if (packet->m_nBodySize > 2 && packet->m_body[2] > 0x01)
+	{
+	  RTMP_Log(RTMP_LOGERROR,
+            "%s: SWFVerification Type %d request not supported! Patches welcome...",
+	    __FUNCTION__, packet->m_body[2]);
+	}
 #ifdef CRYPTO
       /*RTMP_LogHex(packet.m_body, packet.m_nBodySize); */
 
       /* respond with HMAC SHA256 of decompressed SWF, key is the 30byte player key, also the last 30 bytes of the server handshake are applied */
-      if (r->Link.SWFSize)
+      else if (r->Link.SWFSize)
 	{
 	  RTMP_SendCtrl(r, 0x1B, 0, 0);
 	}
@@ -3378,10 +3395,10 @@ RTMP_Close(RTMP *r)
     {
       if (r->m_stream_id > 0)
         {
-          if ((r->Link.protocol & RTMP_FEATURE_WRITE))
-	    SendFCUnpublish(r);
 	  i = r->m_stream_id;
 	  r->m_stream_id = 0;
+          if ((r->Link.protocol & RTMP_FEATURE_WRITE))
+	    SendFCUnpublish(r);
 	  SendDeleteStream(r, i);
 	}
       if (r->m_clientID.av_val)
@@ -3519,6 +3536,10 @@ RTMPSockBuf_Send(RTMPSockBuf *sb, const char *buf, int len)
 {
   int rc;
 
+#ifdef _DEBUG
+  fwrite(buf, 1, len, netstackdump);
+#endif
+
 #if defined(CRYPTO) && !defined(NO_SSL)
   if (sb->sb_ssl)
     {
@@ -3652,11 +3673,15 @@ HTTP_read(RTMP *r, int fill)
     return -1;
   if (strncmp(r->m_sb.sb_start, "HTTP/1.1 200 ", 13))
     return -1;
-  ptr = strstr(r->m_sb.sb_start, "Content-Length:");
+  ptr = r->m_sb.sb_start + sizeof("HTTP/1.1 200");
+  while ((ptr = strstr(ptr, "Content-"))) {
+    if (!strncasecmp(ptr+8, "length:", 7)) break;
+    ptr += 8;
+  }
   if (!ptr)
     return -1;
   hlen = atoi(ptr+16);
-  ptr = strstr(ptr, "\r\n\r\n");
+  ptr = strstr(ptr+16, "\r\n\r\n");
   if (!ptr)
     return -1;
   ptr += 4;
