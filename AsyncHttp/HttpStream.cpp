@@ -1277,10 +1277,9 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable, BOOL realval
         }
     }
 
-    // this mus be removed when rtmp seeking is working
-    // TODO
-//    if (!is_rtmp && (!m_llSeekPos || realvalue)) {
-    if (!m_llSeekPos || realvalue) {
+    // TODO: can we remove this when seeking is working?
+    // ATM: we always provide the real values if we have rtmp
+    if (is_rtmp || !m_llSeekPos || realvalue) {
         *pTotal = m_llDownloadLength;
 		*pAvailable = m_llDownloadedBytes;
     } else {
@@ -1289,7 +1288,7 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable, BOOL realval
     }
 
     m_datalock.Unlock();
-    Log("Length called: return: total: %I64d avail: %I64d", *pTotal, *pAvailable);
+    //Log("Length called: return: total: %I64d avail: %I64d", *pTotal, *pAvailable);
 
     return S_OK;
 }
