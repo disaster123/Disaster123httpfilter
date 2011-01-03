@@ -355,7 +355,18 @@ CAsyncOutputPin::Length(
     LONGLONG* pTotal,
     LONGLONG* pAvailable)
 {
-    return m_pIo->Length(pTotal, pAvailable);
+    // We use local additional Varables and then assign the value to the pointer
+    // Why?
+    // We do this as some splitter (f.e. Cyberlink FLV Splitter) sends often a NULL Pointer and we overwrite it in some subfunctions
+    LONGLONG mytotal;
+    LONGLONG myavail;
+
+    HRESULT hr = m_pIo->Length(&mytotal, &myavail);
+
+    *pTotal = mytotal;
+    *pAvailable = myavail;
+
+    return hr;
 }
 
 

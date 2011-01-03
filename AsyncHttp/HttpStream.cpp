@@ -438,10 +438,12 @@ UINT CALLBACK DownloaderThread(void* param)
                if (bytesrec < CHUNK_SIZE) {
                  if (is_rtmp && !rtmp_filesize_set) {
                    Log("DownloaderThread: got %d bytes instead of a full buffer of size %I64d - but IT COULD BE OK rtmp filesize not set", bytesrec, (LONGLONG)CHUNK_SIZE);
+                   m_llDownloadLength = m_llDownloadPos+bytesrec;
                  } else if (is_rtmp && 
                        (getchunkpos(m_llDownloadPos+bytesrec) >= (getchunkpos(m_llDownloadLength)-1)) ) {
                    // RTMP filesize does not MATCH exactly the filepos
                    Log("DownloaderThread: got %d bytes instead of a full buffer of size %I64d - but this is OK we are near END of RTMP file", bytesrec, (LONGLONG)CHUNK_SIZE);
+                   m_llDownloadLength = m_llDownloadPos+bytesrec;
                  } else if ( (m_llDownloadPos+bytesrec) == m_llDownloadLength )  {
                    Log("DownloaderThread: got %d bytes instead of a full buffer of size %I64d - but this is OK it is END of file", bytesrec, (LONGLONG)CHUNK_SIZE);
                  } else {
@@ -609,7 +611,7 @@ HRESULT CHttpStream::ServerRTMPPreCheck(char* url, string& filetype)
   int bLiveStream = FALSE;	// is it a live stream? then we can't seek/resume
   int bHashes = FALSE;		// display byte counters not hashes by default
   uint32_t dSeek = 0;		// seek position in resume mode, 0 otherwise
-  long int timeout = 120;	// timeout connection after 120 seconds
+  long int timeout = 20;	// timeout connection after 20 seconds
   uint32_t dStartOffset = 0;	// seek position in non-live mode
   uint32_t dStopOffset = 0;
   AVal swfUrl = { 0, 0 };
@@ -692,9 +694,10 @@ HRESULT CHttpStream::ServerRTMPPreCheck(char* url, string& filetype)
     return E_FAIL;
   }
 
+  // TODO: support seeking
   m_llSeekPos = FALSE;
-  // we assume a min of 1 hour and kbs 2000
-  m_llDownloadLength = 2000 * 60 * 60;
+  // we assume a min of 1 hour and kbs 2000 (250 in bytes)
+  m_llDownloadLength = 250 * 1024 * 60 * 60;
 
   HRESULT hr = CreateTempFile(m_llDownloadLength);
   if (FAILED(hr) || m_hFileWrite == INVALID_HANDLE_VALUE || m_hFileRead == INVALID_HANDLE_VALUE) {
@@ -711,20 +714,22 @@ HRESULT CHttpStream::ServerRTMPPreCheck(char* url, string& filetype)
   }
   Log("CHttpStream::ServerRTMPPreCheck: waiting for MetaHeader done - Size: %d", rtmp.m_read.nMetaHeaderSize);
 
-  double filesize = rtmp_get_double_from_metadata(rtmp.m_read.metaHeader, rtmp.m_read.nMetaHeaderSize, "filesize");
-  Log("CHttpStream::ServerRTMPPreCheck: got Filesize: %f", filesize);
+  LONGLONG filesize = (LONGLONG)rtmp_get_double_from_metadata(rtmp.m_read.metaHeader, rtmp.m_read.nMetaHeaderSize, "filesize");
+  Log("CHttpStream::ServerRTMPPreCheck: got Filesize: %I64d", filesize);
   if (filesize <= 0) {
-    // calculate with bitrate 2000
-    filesize = 2000 * rtmp.m_fDuration;
-    Log("CHttpStream::ServerRTMPPreCheck: Calculated size: %f from duration: %f", filesize, rtmp.m_fDuration);
+    // calculate with bitrate kbs 2000 (250 in bytes)
+    filesize = 250 * 1024 * (LONGLONG)rtmp.m_fDuration;
+    Log("CHttpStream::ServerRTMPPreCheck: Calculated size: %I64d from duration: %f", filesize, rtmp.m_fDuration);
     if (rtmp.m_fDuration <= 0) {
       Log("CHttpStream::ServerRTMPPreCheck: Duration is not OK", filesize);
       return E_FAIL;
     }
+  } else {
+    // we got the real filesize - in all other cases the filesize is nearly unknown
+    rtmp_filesize_set = TRUE;
   }
-  m_llDownloadLength = (LONGLONG)filesize;
-  SetNewFileSize((LONGLONG)filesize);
-  rtmp_filesize_set = TRUE;
+  m_llDownloadLength = filesize;
+  SetNewFileSize(filesize);
 
   return S_OK;
 }
@@ -903,7 +908,7 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName, string& filetype)
   string searcher = lpszFileName;
   string::size_type pos = 0;
 
-  if (searcher.find("rtmp://", 0) != string::npos) {
+  if ((searcher.find("rtmp://", 0) != string::npos) || (searcher.find("rtmpe://", 0) != string::npos)) {
     Log("CHttpStream::Initialize: rtmp URL found");
     is_rtmp = TRUE;
   }
@@ -1241,7 +1246,8 @@ HRESULT CHttpStream::Cancel()
 
 HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
 {
-    return Length(&*pTotal, &*pAvailable, FALSE);
+    // STEFAN: check if this is OK or if &* was correct
+    return Length(pTotal, pAvailable, FALSE);
 }
 
 HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable, BOOL realvalue)
@@ -1271,6 +1277,9 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable, BOOL realval
         }
     }
 
+    // this mus be removed when rtmp seeking is working
+    // TODO
+//    if (!is_rtmp && (!m_llSeekPos || realvalue)) {
     if (!m_llSeekPos || realvalue) {
         *pTotal = m_llDownloadLength;
 		*pAvailable = m_llDownloadedBytes;
@@ -1280,7 +1289,7 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable, BOOL realval
     }
 
     m_datalock.Unlock();
-    //Log("Length called: return: total: %I64d avail: %I64d", *pTotal, *pAvailable);
+    Log("Length called: return: total: %I64d avail: %I64d", *pTotal, *pAvailable);
 
     return S_OK;
 }

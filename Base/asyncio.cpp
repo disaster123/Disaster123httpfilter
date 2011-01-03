@@ -13,6 +13,8 @@
 
 #include "..\Base\alloctracing.h"
 
+extern void Log(const char *fmt, ...);
+
 // --- CAsyncRequest ---
 
 
