@@ -47,8 +47,15 @@ static CCritSec m_datalock;
 static CCritSec m_CritSec;
 static CCritSec g_CritSec;
 
-RTMP          rtmp = { 0 };
+// TODO:
+// implement RTMP seeking and correct file size detection
+// Idea:
+// - support seek when we have metadata
+// - then when we get a filepos we calculate an estimated timepos and seek to it
+// - we store this in a new temp file as we don't know the real pos. in our file
+
 std::queue<std::string> m_DownloaderQueue;
+RTMP          rtmp = { 0 };
 TCHAR		  m_szTempFile[MAX_PATH]; // Name of the temp file
 BOOL          m_DownloaderShouldRun = FALSE;
 HANDLE        m_hDownloader = NULL;
