@@ -422,6 +422,33 @@ static HRESULT GetValueFromHeader(const char* head, const char* key, string& val
     return S_OK;
 }
 
+static HRESULT GetURLParam(string url, string searchkey, string& value)
+{
+    string::size_type spos = 0;
+    string::size_type epos = 0;
+    searchkey += "=";
+    value = "";
+
+    // check if we have the param at all
+    if ((spos = url.find(searchkey, 0)) != string::npos) {
+      spos += searchkey.length();
+      // check for an & sign after the key otherwise it goes up to the end of the string
+      if ((epos = url.find("&", spos)) == string::npos) {
+        epos = url.length();
+      }
+      epos -= spos;
+      
+      value = url.substr(spos, epos);
+      UrlDecode(value);
+    }
+
+    if (value.length() == 0) {
+        return E_FAIL;
+    }
+
+    return S_OK;
+}
+
 static string GetLocationFromHeader(string headers)
 {
    string ret;

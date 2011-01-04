@@ -56,6 +56,7 @@ static CCritSec g_CritSec;
 
 std::queue<std::string> m_DownloaderQueue;
 RTMP          rtmp = { 0 };
+string        rtmp_onlinevideos_params = "";
 TCHAR		  m_szTempFile[MAX_PATH]; // Name of the temp file
 BOOL          m_DownloaderShouldRun = FALSE;
 HANDLE        m_hDownloader = NULL;
@@ -432,7 +433,6 @@ UINT CALLBACK DownloaderThread(void* param)
            if (is_rtmp) {
              bytesrec = rtmp_recv_wait_all(&rtmp, buffer, sizeof(buffer));
            } else {
-             // STEFAN
   		     // MSG_WAITALL is broken / not available on Win XP to we've to use our own function
 		     bytesrec = recv_wait_all(Socket, buffer, sizeof(buffer), ssupp_waitall);
            }
@@ -593,6 +593,7 @@ CHttpStream::~CHttpStream()
       RTMP_Close(&rtmp);
       is_rtmp = FALSE;
       rtmp_filesize_set = FALSE;
+      rtmp_onlinevideos_params = "";
     }
 
     Log("~CHttpStream() StopLogger...");
@@ -630,9 +631,6 @@ HRESULT CHttpStream::ServerRTMPPreCheck(char* url, string& filetype)
   uint32_t swfSize = 0;
   AVal flashVer = { 0, 0 };
   AVal sockshost = { 0, 0 };
-
-  protocol = RTMP_PROTOCOL_RTMP;
-
   AVal parsedHost, parsedApp, parsedPlaypath;
   unsigned int parsedPort = 0;
   int parsedProtocol = RTMP_PROTOCOL_UNDEFINED;
@@ -673,11 +671,67 @@ HRESULT CHttpStream::ServerRTMPPreCheck(char* url, string& filetype)
     strcpy(tcUrl.av_val, str);
   }
 
-  Log("RTMP Options: detected tcURL: %s prot: %s hostname: %.*s port: %d sockshost: %s playpath: %s swfUrl: %s pageUrl: %s app: %.*s auth: %s swfHash: %s swfSize: %d flashVer: %s subscribepath: %s dSeek: %d dStopOffset: %d bLiveStream: %d timeout: %d", 
+  // special OnlineVideos subparam parsing
+  if (rtmp_onlinevideos_params.length() > 0) {
+    string lvalue = "";
+    if (GetURLParam(rtmp_onlinevideos_params, "tcUrl", lvalue) == S_OK) {
+      tcUrl.av_len = lvalue.length();
+      tcUrl.av_val = (char *) malloc(lvalue.length() + 1);
+      strcpy(tcUrl.av_val, lvalue.c_str());
+    }
+    if (GetURLParam(rtmp_onlinevideos_params, "hostname", lvalue) == S_OK) {
+      hostname.av_len = lvalue.length();
+      hostname.av_val = (char *) malloc(lvalue.length() + 1);
+      strcpy(hostname.av_val, lvalue.c_str());
+    }
+    if (GetURLParam(rtmp_onlinevideos_params, "playpath", lvalue) == S_OK) {
+      playpath.av_len = lvalue.length();
+      playpath.av_val = (char *) malloc(lvalue.length() + 1);
+      strcpy(playpath.av_val, lvalue.c_str());
+    }
+    if (GetURLParam(rtmp_onlinevideos_params, "subscribepath", lvalue) == S_OK) {
+      subscribepath.av_len = lvalue.length();
+      subscribepath.av_val = (char *) malloc(lvalue.length() + 1);
+      strcpy(subscribepath.av_val, lvalue.c_str());
+    }
+    if (GetURLParam(rtmp_onlinevideos_params, "pageurl", lvalue) == S_OK) {
+      pageUrl.av_len = lvalue.length();
+      pageUrl.av_val = (char *) malloc(lvalue.length() + 1);
+      strcpy(pageUrl.av_val, lvalue.c_str());
+    }
+    if (GetURLParam(rtmp_onlinevideos_params, "swfurl", lvalue) == S_OK) {
+      swfUrl.av_len = lvalue.length();
+      swfUrl.av_val = (char *) malloc(lvalue.length() + 1);
+      strcpy(swfUrl.av_val, lvalue.c_str());
+    }
+    if (GetURLParam(rtmp_onlinevideos_params, "swfsize", lvalue) == S_OK) {
+      swfSize = atoi(lvalue.c_str());
+    }
+    if (GetURLParam(rtmp_onlinevideos_params, "swfhash", lvalue) == S_OK) {
+      swfHash.av_len = lvalue.length();
+      swfHash.av_val = (char *) malloc(lvalue.length() + 1);
+      strcpy(swfHash.av_val, lvalue.c_str());
+    }
+    if (GetURLParam(rtmp_onlinevideos_params, "app", lvalue) == S_OK) {
+      app.av_len = lvalue.length();
+      app.av_val = (char *) malloc(lvalue.length() + 1);
+      strcpy(app.av_val, lvalue.c_str());
+    }
+    if (GetURLParam(rtmp_onlinevideos_params, "auth", lvalue) == S_OK) {
+      auth.av_len = lvalue.length();
+      auth.av_val = (char *) malloc(lvalue.length() + 1);
+      strcpy(auth.av_val, lvalue.c_str());
+    }
+    if (GetURLParam(rtmp_onlinevideos_params, "live", lvalue) == S_OK) {
+      bLiveStream = atoi(lvalue.c_str());
+    }
+  }
+
+  Log("RTMP Options: detected\n\ttcURL: %s\n\tprot: %s\n\thostname: %.*s\n\tport: %d\n\tsockshost: %s\n\tplaypath: %s\n\tswfUrl: %s\n\tpageUrl: %s\n\tapp: %.*s\n\tauth: %s\n\tswfHash: %s\n\tswfSize: %d\n\tflashVer: %s\n\tsubscribepath: %s\n\tdSeek: %d\n\tdStopOffset: %d\n\tbLiveStream: %d\n",
       tcUrl.av_val, RTMPProtocolStringsLower[protocol], 
       hostname.av_len, hostname.av_val, port, sockshost.av_val, playpath.av_val,
       swfUrl.av_val, pageUrl.av_val, app.av_len, app.av_val, auth.av_val, swfHash.av_val, swfSize,
-      flashVer.av_val, subscribepath.av_val, dSeek, dStopOffset, bLiveStream, timeout);
+      flashVer.av_val, subscribepath.av_val, dSeek, dStopOffset, bLiveStream);
 
   RTMP_SetupStream(&rtmp, protocol, &hostname, port, &sockshost, &playpath,
   		   &tcUrl, &swfUrl, &pageUrl, &app, &auth, &swfHash, swfSize,
@@ -902,6 +956,7 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName, string& filetype)
   ssupp_waitall = TRUE;
   is_rtmp = FALSE;
   rtmp_filesize_set = FALSE;
+  rtmp_onlinevideos_params = "";
   m_szTempFile[0] = TEXT('0');
 
   GetOperationSystemName(winversion);
@@ -918,8 +973,25 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName, string& filetype)
   if ((searcher.find("rtmp://", 0) != string::npos) || (searcher.find("rtmpe://", 0) != string::npos)) {
     Log("CHttpStream::Initialize: rtmp URL found");
     is_rtmp = TRUE;
+
+    // special OnlineVideos handling
+    if ((searcher.find("rtmp://127.0.0.1/stream.flv?", 0) != string::npos) ||
+        (searcher.find("rtmpe://127.0.0.1/stream.flv?", 0) != string::npos)) {
+      // seems to be an OnlineVideos case :-)
+      string keyvalue = "";
+      if (GetURLParam(searcher, "rtmpurl", keyvalue) == S_OK) {
+        // we simply use here the whole orig. string this is the easiest way
+        rtmp_onlinevideos_params = searcher;
+
+        // copy the new value to searcher we will copy it later to the local URL VALUE
+        searcher = keyvalue;
+
+        Log("CHttpStream::Initialize: OnlineVideos RTMP Stream detected - new URL: %s", keyvalue.c_str());
+      }
+    }
   }
 
+  // check for &&&& special params
   if ((pos = searcher.find("&&&&", 0)) != string::npos) {
     string url = searcher.substr(0, pos);
     m_FileName = new TCHAR[strlen(url.c_str())+1];
@@ -933,8 +1005,9 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName, string& filetype)
     stringreplace(add_headers, "\\n", "\n");
     stringreplace(add_headers, "\n", "\r\n");
   } else {
-    m_FileName = new TCHAR[strlen(lpszFileName)+1];
-  	strcpy(m_FileName, lpszFileName);
+    // no special params found copy the searcher to m_FileName
+    m_FileName = new TCHAR[strlen(searcher.c_str())+1];
+   	strcpy(m_FileName, searcher.c_str());
   }
 
   if (is_rtmp) {
@@ -1244,16 +1317,13 @@ HRESULT CHttpStream::EndRead(
 HRESULT CHttpStream::Cancel()
 {
     Log("CHttpStream::Cancel()");
-
     CHttpStream::~CHttpStream();
 
-    Log("CHttpStream::Cancelled");
     return S_OK;
 }
 
 HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable)
 {
-    // STEFAN: check if this is OK or if &* was correct
     return Length(pTotal, pAvailable, FALSE);
 }
 
