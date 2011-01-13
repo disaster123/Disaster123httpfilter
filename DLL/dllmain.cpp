@@ -104,6 +104,7 @@ std::queue<std::string> m_logQueue;
 BOOL m_bLoggerRunning;
 BOOL m_bLoggerDisable = false;
 HANDLE m_hLogger = NULL;
+BOOL logrunned = false;
 
 string GetLogLine()
 {
@@ -156,7 +157,10 @@ void StartLogger()
   if (m_bLoggerDisable) {
     return;
   }
-  LogRotate();
+  if (!logrunned) {
+    logrunned = TRUE;
+    LogRotate();
+  }
   m_hLogger = (HANDLE)_beginthreadex(NULL, 0, LogThread, 0, 0, &id);
   SetThreadPriority(m_hLogger, THREAD_PRIORITY_BELOW_NORMAL);
 }

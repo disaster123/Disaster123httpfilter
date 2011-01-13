@@ -727,6 +727,9 @@ HRESULT CHttpStream::ServerRTMPPreCheck(char* url, string& filetype)
     }
   }
 
+  // Conn
+  // int RTMP_SetOpt(RTMP *r, const AVal *opt, AVal *arg)
+
   Log("RTMP Options: detected\n\ttcURL: %s\n\tprot: %s\n\thostname: %.*s\n\tport: %d\n\tsockshost: %s\n\tplaypath: %s\n\tswfUrl: %s\n\tpageUrl: %s\n\tapp: %.*s\n\tauth: %s\n\tswfHash: %s\n\tswfSize: %d\n\tflashVer: %s\n\tsubscribepath: %s\n\tdSeek: %d\n\tdStopOffset: %d\n\tbLiveStream: %d\n",
       tcUrl.av_val, RTMPProtocolStringsLower[protocol], 
       hostname.av_len, hostname.av_val, port, sockshost.av_val, playpath.av_val,
