@@ -1,13 +1,10 @@
-Microsoft Visual Studio Solution File, Format Version 10.00
-# Visual Studio 2008
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Disaster123HTTPFilter", "Disaster123HTTPFilter.vcproj", "{76FC45D6-69EF-41D6-91A4-BD3DAFAC67EB}"
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Disaster123HTTPFilter", "Disaster123HTTPFilter.vcxproj", "{76FC45D6-69EF-41D6-91A4-BD3DAFAC67EB}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "librtmp", "librtmp_win32\librtmp_win32\librtmp_win32.vcproj", "{23EDFAE9-EE2E-408B-AEBE-9BB58E5D43FE}"
-	ProjectSection(ProjectDependencies) = postProject
-		{9707DC37-B76A-4B1A-AAFA-078474A0293D} = {9707DC37-B76A-4B1A-AAFA-078474A0293D}
-	EndProjectSection
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "librtmp", "librtmp_win32\librtmp_win32\librtmp_win32.vcxproj", "{23EDFAE9-EE2E-408B-AEBE-9BB58E5D43FE}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "polarssl", "librtmp_win32\polarssl-0.13.1\visualc\polarssl.vcproj", "{9707DC37-B76A-4B1A-AAFA-078474A0293D}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "polarssl", "librtmp_win32\polarssl-0.13.1\visualc\polarssl.vcxproj", "{9707DC37-B76A-4B1A-AAFA-078474A0293D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
