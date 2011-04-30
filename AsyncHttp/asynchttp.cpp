@@ -26,15 +26,15 @@ extern const char *getVersion();
 //* Create a new instance of this class
 CUnknown * WINAPI CAsyncFilterHttp::CreateInstance(LPUNKNOWN pUnk, HRESULT *phr)
 {
-    ASSERT(phr);
-#ifdef _DEBUG
-	Log("(asynchttp) CAsyncFilterHttp::CreateInstance DEBUG Version: %s", getVersion());
+  ASSERT(phr);
+  #ifdef _DEBUG
+  	Log("(asynchttp) CAsyncFilterHttp::CreateInstance DEBUG Version: %s", getVersion());
     _CrtSetDbgFlag ( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF );
-#else
-	Log("(asynchttp) CAsyncFilterHttp::CreateInstance Version: %s", getVersion());
-#endif
+  #else
+    Log("(asynchttp) CAsyncFilterHttp::CreateInstance Version: %s", getVersion());
+  #endif
 
-    //  DLLEntry does the right thing with the return code and
-    //  the returned value on failure
-	return new CAsyncFilterHttp(pUnk, phr);
+  //  DLLEntry does the right thing with the return code and
+  //  the returned value on failure
+ return new CAsyncFilterHttp(pUnk, phr);
 }

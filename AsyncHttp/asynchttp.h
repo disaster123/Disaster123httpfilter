@@ -36,9 +36,9 @@ DEFINE_GUID(MEDIASUBTYPE_FLV, 0xf2fac0f1, 0x3852, 0x4670, 0xaa, 0xc0, 0x90, 0x51
 
 class CAsyncFilterHttp : public CAsyncReader, public IFileSourceFilter, public IAMOpenProgress
 {
-public:
+    public:
     CAsyncFilterHttp(LPUNKNOWN pUnk, HRESULT *phr) :
-        CAsyncReader(NAME("Disaster123's MP HTTP Filter"), pUnk, CLSID_AsyncHttp, &m_HttpStream, phr),
+        CAsyncReader(NAME("ABC hope this is nowhere visible"), pUnk, CLSID_AsyncHttp, &m_HttpStream, phr),
         m_pFileName(NULL),
         m_pbData(NULL)
     {

@@ -53,11 +53,18 @@ const AMOVIESETUP_PIN sudOpPin =
     &sudOpPinTypes      // lpTypes
 };
 
+REGFILTER2 rf2FilterReg = {
+    1,              // Version 1 (no pin mediums or pin category).
+    MERIT_PREFERRED,   // Merit.
+    1,              // Number of pins.
+    &sudOpPin        // Pointer to pin information.
+};
+
 const AMOVIESETUP_FILTER sudAsyncHttp =
 { 
     &CLSID_AsyncHttp,         // clsID
     szAsyncHttp,                    // strName
-	MERIT_NORMAL,                 // dwMerit
+    MERIT_PREFERRED,                 // dwMerit
     1,                              // nPins
     &sudOpPin                       // lpPin
 };
@@ -230,14 +237,51 @@ const char *getVersion() {
 
 STDAPI DllRegisterServer()
 {
-	Log("CAsyncFilterHttp::CreateInstance... VERSION: %s", VERSION);
+  HRESULT hr;
+  IFilterMapper2 *pFM2 = NULL;
+  HKEY hKey;
+  unsigned char    *StringUuid;
+  char* regvalue;
 
-    return AMovieDllRegisterServer2(TRUE);
+  Log("DllRegisterServer... VERSION: %s", VERSION);
+
+  hr = AMovieDllRegisterServer2(TRUE);
+  if (FAILED(hr))
+    return hr;
+
+  hr = CoCreateInstance(CLSID_FilterMapper2, NULL, CLSCTX_INPROC_SERVER,
+            IID_IFilterMapper2, (void **)&pFM2);
+
+  if (FAILED(hr))
+    return hr;
+
+  hr = pFM2->RegisterFilter(
+        CLSID_AsyncHttp,                 // Filter CLSID. 
+        szAsyncHttp,                     // Filter name.
+        NULL,                            // Device moniker. 
+        &CLSID_LegacyAmFilterCategory,   // filter cat.
+        szAsyncHttp,                       // Instance data.
+        &rf2FilterReg                    // Pointer to filter information.
+  );
+  pFM2->Release();
+  if (FAILED(hr))
+    return hr;
+
+  UuidToString(&CLSID_AsyncHttp, &StringUuid);
+  regvalue = (char*) malloc (sizeof(char) * (strlen((char *)StringUuid) + 3));
+  sprintf(regvalue, "{%s}", StringUuid);
+  RegOpenKeyEx(HKEY_CLASSES_ROOT, "http", NULL, KEY_READ | KEY_SET_VALUE, &hKey);
+  RegSetValueEx(hKey, TEXT("Source Filter"), 0, REG_SZ, (LPBYTE)regvalue, strlen(regvalue)+1);
+  RegCloseKey(hKey);
+  RpcStringFree(&StringUuid);
+  SAFE_DELETE(regvalue);
+
+  return hr;
 }
 
 STDAPI DllUnregisterServer()
 {
-    return AMovieDllRegisterServer2(FALSE);
+  return AMovieDllRegisterServer2(FALSE);
 }
 
 //
@@ -249,5 +293,5 @@ BOOL APIENTRY DllMain(HANDLE hModule,
                       DWORD  dwReason, 
                       LPVOID lpReserved)
 {
-	return DllEntryPoint((HINSTANCE)(hModule), dwReason, lpReserved);
+  return DllEntryPoint((HINSTANCE)(hModule), dwReason, lpReserved);
 }
