@@ -27,14 +27,14 @@ extern const char *getVersion();
 CUnknown * WINAPI CAsyncFilterHttp::CreateInstance(LPUNKNOWN pUnk, HRESULT *phr)
 {
   ASSERT(phr);
-  #ifdef _DEBUG
-  	Log("(asynchttp) CAsyncFilterHttp::CreateInstance DEBUG Version: %s", getVersion());
-    _CrtSetDbgFlag ( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF );
-  #else
-    Log("(asynchttp) CAsyncFilterHttp::CreateInstance Version: %s", getVersion());
-  #endif
+#ifdef _DEBUG
+  Log("(asynchttp) CAsyncFilterHttp::CreateInstance DEBUG Version: %s", getVersion());
+  _CrtSetDbgFlag ( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF );
+#else
+  Log("(asynchttp) CAsyncFilterHttp::CreateInstance Version: %s", getVersion());
+#endif
 
   //  DLLEntry does the right thing with the return code and
   //  the returned value on failure
- return new CAsyncFilterHttp(pUnk, phr);
+  return new CAsyncFilterHttp(pUnk, phr);
 }

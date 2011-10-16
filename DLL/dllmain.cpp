@@ -36,37 +36,37 @@ const char *VERSION = "0.30";
 //
 const AMOVIESETUP_MEDIATYPE sudOpPinTypes =
 { 
-    &MEDIATYPE_Stream,     // clsMajorType
-    &MEDIASUBTYPE_NULL     // clsMinorType
+  &MEDIATYPE_Stream,     // clsMajorType
+  &MEDIASUBTYPE_NULL     // clsMinorType
 };
 
 const AMOVIESETUP_PIN sudOpPin =
 { 
-    L"Output",          // strName
-    FALSE,              // bRendered
-    TRUE,               // bOutput
-    FALSE,              // bZero
-    FALSE,              // bMany
-    &CLSID_NULL,        // clsConnectsToFilter
-    L"Input",           // strConnectsToPin
-    1,                  // nTypes
-    &sudOpPinTypes      // lpTypes
+  L"Output",          // strName
+  FALSE,              // bRendered
+  TRUE,               // bOutput
+  FALSE,              // bZero
+  FALSE,              // bMany
+  &CLSID_NULL,        // clsConnectsToFilter
+  L"Input",           // strConnectsToPin
+  1,                  // nTypes
+  &sudOpPinTypes      // lpTypes
 };
 
 REGFILTER2 rf2FilterReg = {
-    1,              // Version 1 (no pin mediums or pin category).
-    MERIT_PREFERRED,   // Merit.
-    1,              // Number of pins.
-    &sudOpPin        // Pointer to pin information.
+  1,              // Version 1 (no pin mediums or pin category).
+  MERIT_PREFERRED,   // Merit.
+  1,              // Number of pins.
+  &sudOpPin        // Pointer to pin information.
 };
 
 const AMOVIESETUP_FILTER sudAsyncHttp =
 { 
-    &CLSID_AsyncHttp,         // clsID
-    szAsyncHttp,                    // strName
-    MERIT_PREFERRED,                 // dwMerit
-    1,                              // nPins
-    &sudOpPin                       // lpPin
+  &CLSID_AsyncHttp,         // clsID
+  szAsyncHttp,                    // strName
+  MERIT_PREFERRED,                 // dwMerit
+  1,                              // nPins
+  &sudOpPin                       // lpPin
 };
 
 
@@ -75,13 +75,13 @@ const AMOVIESETUP_FILTER sudAsyncHttp =
 //
 CFactoryTemplate g_Templates[] = 
 {
-    {
-        szAsyncHttp,
-        &CLSID_AsyncHttp,
-        CAsyncFilterHttp::CreateInstance,
-        NULL,
-        &sudAsyncHttp
-    }
+  {
+    szAsyncHttp,
+      &CLSID_AsyncHttp,
+      CAsyncFilterHttp::CreateInstance,
+      NULL,
+      &sudAsyncHttp
+  }
 };
 
 int g_cTemplates = sizeof(g_Templates) / sizeof(g_Templates[0]);
@@ -225,7 +225,7 @@ void Log(const char *fmt, ...)
 
 
 const char *getVersion() {
-   return VERSION;
+  return VERSION;
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -250,19 +250,19 @@ STDAPI DllRegisterServer()
     return hr;
 
   hr = CoCreateInstance(CLSID_FilterMapper2, NULL, CLSCTX_INPROC_SERVER,
-            IID_IFilterMapper2, (void **)&pFM2);
+    IID_IFilterMapper2, (void **)&pFM2);
 
   if (FAILED(hr))
     return hr;
 
   hr = pFM2->RegisterFilter(
-        CLSID_AsyncHttp,                 // Filter CLSID. 
-        szAsyncHttp,                     // Filter name.
-        NULL,                            // Device moniker. 
-        &CLSID_LegacyAmFilterCategory,   // filter cat.
-        szAsyncHttp,                       // Instance data.
-        &rf2FilterReg                    // Pointer to filter information.
-  );
+    CLSID_AsyncHttp,                 // Filter CLSID. 
+    szAsyncHttp,                     // Filter name.
+    NULL,                            // Device moniker. 
+    &CLSID_LegacyAmFilterCategory,   // filter cat.
+    szAsyncHttp,                       // Instance data.
+    &rf2FilterReg                    // Pointer to filter information.
+    );
   pFM2->Release();
   if (FAILED(hr))
     return hr;
@@ -290,8 +290,8 @@ STDAPI DllUnregisterServer()
 extern "C" BOOL WINAPI DllEntryPoint(HINSTANCE, ULONG, LPVOID);
 
 BOOL APIENTRY DllMain(HANDLE hModule, 
-                      DWORD  dwReason, 
-                      LPVOID lpReserved)
+  DWORD  dwReason, 
+  LPVOID lpReserved)
 {
   return DllEntryPoint((HINSTANCE)(hModule), dwReason, lpReserved);
 }

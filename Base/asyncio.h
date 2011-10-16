@@ -35,105 +35,105 @@ class CAsyncStream;
 class CAsyncStream
 {
 public:
-    virtual ~CAsyncStream() {};
+  virtual ~CAsyncStream() {};
 
-    virtual HRESULT StartRead(
-		PBYTE pbBuffer,
-		DWORD dwBytesToRead,
-		BOOL bAlign,
-		/* in */  LPOVERLAPPED pOverlapped,
-		/* out */ LPBOOL pbPending,     // Receives TRUE if I/O request is pending.
-		/* out */ LPDWORD pdwBytesRead  // Receives the number of bytes read, if
-                                        // *pbPending is FALSE. Otherwise, ignore.
-		) = 0;
+  virtual HRESULT StartRead(
+    PBYTE pbBuffer,
+    DWORD dwBytesToRead,
+    BOOL bAlign,
+    /* in */  LPOVERLAPPED pOverlapped,
+    /* out */ LPBOOL pbPending,     // Receives TRUE if I/O request is pending.
+    /* out */ LPDWORD pdwBytesRead  // Receives the number of bytes read, if
+    // *pbPending is FALSE. Otherwise, ignore.
+    ) = 0;
 
-	virtual HRESULT EndRead(LPOVERLAPPED pOverlapped, LPDWORD pdwBytesRead) = 0;
+  virtual HRESULT EndRead(LPOVERLAPPED pOverlapped, LPDWORD pdwBytesRead) = 0;
 
-	virtual HRESULT Cancel() = 0;
-    virtual HRESULT Length(LONGLONG *pTotal, LONGLONG *pAvailable) = 0;
+  virtual HRESULT Cancel() = 0;
+  virtual HRESULT Length(LONGLONG *pTotal, LONGLONG *pAvailable) = 0;
 
-    // NOTE: In the IAsyncReader::Length method, pAvailable can be NULL.
-    // However, CAsyncStream::Length is never called with pAvailable equal
-    // to NULL (because CAsyncIo will always pass in a valid pointer).
-    virtual DWORD Alignment() = 0;
+  // NOTE: In the IAsyncReader::Length method, pAvailable can be NULL.
+  // However, CAsyncStream::Length is never called with pAvailable equal
+  // to NULL (because CAsyncIo will always pass in a valid pointer).
+  virtual DWORD Alignment() = 0;
 
-    virtual void Lock() = 0;        // For serializing calls to this object.
-    virtual void Unlock() = 0;
+  virtual void Lock() = 0;        // For serializing calls to this object.
+  virtual void Unlock() = 0;
 };
 
 // represents a single request and performs the i/o. Can be called on either
 // worker thread or app thread.
 class CAsyncRequest
 {
-    CAsyncIo     *m_pIo;
-    CAsyncStream *m_pStream;
-    LONGLONG      m_llPos;
-    LONG        m_lLength;
-	BOOL		m_bPending;
-	DWORD		m_dwActual;
-    BYTE*       m_pBuffer;
-    LPVOID      m_pContext;
-    DWORD_PTR   m_dwUser;
-    HRESULT     m_hr;
-	OVERLAPPED	m_Overlapped;
+  CAsyncIo     *m_pIo;
+  CAsyncStream *m_pStream;
+  LONGLONG      m_llPos;
+  LONG        m_lLength;
+  BOOL		m_bPending;
+  DWORD		m_dwActual;
+  BYTE*       m_pBuffer;
+  LPVOID      m_pContext;
+  DWORD_PTR   m_dwUser;
+  HRESULT     m_hr;
+  OVERLAPPED	m_Overlapped;
 
 public:
 
-	CAsyncRequest() 
-	{
-		ZeroMemory(&m_Overlapped, sizeof(m_Overlapped));
-	}
+  CAsyncRequest() 
+  {
+    ZeroMemory(&m_Overlapped, sizeof(m_Overlapped));
+  }
 
-	virtual ~CAsyncRequest()
-	{
-		CloseHandle(m_Overlapped.hEvent);
-	}
+  virtual ~CAsyncRequest()
+  {
+    CloseHandle(m_Overlapped.hEvent);
+  }
 
-    // init the params for this request. Issue the i/o
-    // if overlapped i/o is possible.
-    HRESULT Request(
-        CAsyncIo *pIo,
-        CAsyncStream *pStream,
-        LONGLONG llPos,
-        LONG lLength,
-        BOOL bAligned,
-        BYTE* pBuffer,
-        LPVOID pContext,    // filter's context
-        DWORD_PTR dwUser);      // downstream filter's context
+  // init the params for this request. Issue the i/o
+  // if overlapped i/o is possible.
+  HRESULT Request(
+    CAsyncIo *pIo,
+    CAsyncStream *pStream,
+    LONGLONG llPos,
+    LONG lLength,
+    BOOL bAligned,
+    BYTE* pBuffer,
+    LPVOID pContext,    // filter's context
+    DWORD_PTR dwUser);      // downstream filter's context
 
-    // issue the i/o if not overlapped, and block until i/o complete.
-    // returns error code of file i/o
-    HRESULT Complete();
+  // issue the i/o if not overlapped, and block until i/o complete.
+  // returns error code of file i/o
+  HRESULT Complete();
 
-    // cancels the i/o. 
-    HRESULT Cancel()
-    {
-		return m_pStream->Cancel();
-    };
+  // cancels the i/o. 
+  HRESULT Cancel()
+  {
+    return m_pStream->Cancel();
+  };
 
-    // accessor functions
-    LPVOID GetContext()
-    {
-        return m_pContext;
-    };
+  // accessor functions
+  LPVOID GetContext()
+  {
+    return m_pContext;
+  };
 
-    DWORD_PTR GetUser()
-    {
-        return m_dwUser;
-    };
+  DWORD_PTR GetUser()
+  {
+    return m_dwUser;
+  };
 
-    HRESULT GetHResult() {
-        return m_hr;
-    };
+  HRESULT GetHResult() {
+    return m_hr;
+  };
 
-    // we set m_lLength to the actual length
-    LONG GetActualLength() {
-        return m_lLength;
-    };
+  // we set m_lLength to the actual length
+  LONG GetActualLength() {
+    return m_lLength;
+  };
 
-    LONGLONG GetStart() {
-        return m_llPos;
-    };
+  LONGLONG GetStart() {
+    return m_llPos;
+  };
 };
 
 
@@ -164,136 +164,136 @@ typedef CGenericList<CAsyncRequest> CRequestList;
 class CAsyncIo
 {
 
-    CCritSec m_csReader;
-    CAsyncStream *m_pStream;
+  CCritSec m_csReader;
+  CAsyncStream *m_pStream;
 
-    CCritSec m_csLists;      // locks access to the list and events
-    BOOL m_bFlushing;        // true if between BeginFlush/EndFlush
+  CCritSec m_csLists;      // locks access to the list and events
+  BOOL m_bFlushing;        // true if between BeginFlush/EndFlush
 
-    CRequestList m_listWork;
-    CRequestList m_listDone;
+  CRequestList m_listWork;
+  CRequestList m_listDone;
 
-    CAMEvent m_evWork;      // set when list is not empty
-    CAMEvent m_evDone;
+  CAMEvent m_evWork;      // set when list is not empty
+  CAMEvent m_evDone;
 
-    // for correct flush behaviour: all protected by m_csLists
-    LONG    m_cItemsOut;    // nr of items not on listDone or listWork
-    BOOL    m_bWaiting;     // TRUE if someone waiting for m_evAllDone
-    CAMEvent m_evAllDone;   // signal when m_cItemsOut goes to 0 if m_cWaiting
+  // for correct flush behaviour: all protected by m_csLists
+  LONG    m_cItemsOut;    // nr of items not on listDone or listWork
+  BOOL    m_bWaiting;     // TRUE if someone waiting for m_evAllDone
+  CAMEvent m_evAllDone;   // signal when m_cItemsOut goes to 0 if m_cWaiting
 
 
-    CAMEvent m_evStop;         // set when thread should exit
-    HANDLE m_hThread;
+  CAMEvent m_evStop;         // set when thread should exit
+  HANDLE m_hThread;
 
-    // start the thread
-    HRESULT StartThread(void);
+  // start the thread
+  HRESULT StartThread(void);
 
-    // stop the thread and close the handle
-    HRESULT CloseThread(void);
+  // stop the thread and close the handle
+  HRESULT CloseThread(void);
 
-    // manage the list of requests. hold m_csLists and ensure
-    // that the (manual reset) event hevList is set when things on
-    // the list but reset when the list is empty.
-    // returns null if list empty
-    CAsyncRequest* GetWorkItem();
+  // manage the list of requests. hold m_csLists and ensure
+  // that the (manual reset) event hevList is set when things on
+  // the list but reset when the list is empty.
+  // returns null if list empty
+  CAsyncRequest* GetWorkItem();
 
-    // get an item from the done list
-    CAsyncRequest* GetDoneItem();
+  // get an item from the done list
+  CAsyncRequest* GetDoneItem();
 
-    // put an item on the work list
-    HRESULT PutWorkItem(CAsyncRequest* pRequest);
+  // put an item on the work list
+  HRESULT PutWorkItem(CAsyncRequest* pRequest);
 
-    // put an item on the done list
-    HRESULT PutDoneItem(CAsyncRequest* pRequest);
+  // put an item on the done list
+  HRESULT PutDoneItem(CAsyncRequest* pRequest);
 
-    // called on thread to process any active requests
-    void ProcessRequests(void);
+  // called on thread to process any active requests
+  void ProcessRequests(void);
 
-    // initial static thread proc calls ThreadProc with DWORD
-    // param as this
-    static DWORD WINAPI InitialThreadProc(LPVOID pv) {
-        CAsyncIo * pThis = (CAsyncIo*) pv;
-        return pThis->ThreadProc();
-    };
+  // initial static thread proc calls ThreadProc with DWORD
+  // param as this
+  static DWORD WINAPI InitialThreadProc(LPVOID pv) {
+    CAsyncIo * pThis = (CAsyncIo*) pv;
+    return pThis->ThreadProc();
+  };
 
-    DWORD ThreadProc(void);
+  DWORD ThreadProc(void);
 
 public:
 
-    CAsyncIo(CAsyncStream *pStream);
-    ~CAsyncIo();
+  CAsyncIo(CAsyncStream *pStream);
+  ~CAsyncIo();
 
-    // open the file
-    HRESULT Open(LPCTSTR pName);
+  // open the file
+  HRESULT Open(LPCTSTR pName);
 
-    // ready for async activity - call this before
-    // calling Request
-    HRESULT AsyncActive(void);
+  // ready for async activity - call this before
+  // calling Request
+  HRESULT AsyncActive(void);
 
-    // call this when no more async activity will happen before
-    // the next AsyncActive call
-    HRESULT AsyncInactive(void);
+  // call this when no more async activity will happen before
+  // the next AsyncActive call
+  HRESULT AsyncInactive(void);
 
-    // queue a requested read. must be aligned.
-    HRESULT Request(
-            LONGLONG llPos,
-            LONG lLength,
-            BOOL bAligned,
-            BYTE* pBuffer,
-            LPVOID pContext,
-            DWORD_PTR dwUser);
+  // queue a requested read. must be aligned.
+  HRESULT Request(
+    LONGLONG llPos,
+    LONG lLength,
+    BOOL bAligned,
+    BYTE* pBuffer,
+    LPVOID pContext,
+    DWORD_PTR dwUser);
 
-    // wait for the next read to complete
-    HRESULT WaitForNext(
-            DWORD dwTimeout,
-            LPVOID *ppContext,
-            DWORD_PTR * pdwUser,
-            LONG * pcbActual);
+  // wait for the next read to complete
+  HRESULT WaitForNext(
+    DWORD dwTimeout,
+    LPVOID *ppContext,
+    DWORD_PTR * pdwUser,
+    LONG * pcbActual);
 
-    // perform a read of an already aligned buffer
-    HRESULT SyncReadAligned(
-            LONGLONG llPos,
-            LONG lLength,
-            BYTE* pBuffer,
-            LONG* pcbActual,
-            PVOID pvContext);
+  // perform a read of an already aligned buffer
+  HRESULT SyncReadAligned(
+    LONGLONG llPos,
+    LONG lLength,
+    BYTE* pBuffer,
+    LONG* pcbActual,
+    PVOID pvContext);
 
-    // perform a synchronous read. will be buffered
-    // if not aligned.
-    HRESULT SyncRead(
-            LONGLONG llPos,
-            LONG lLength,
-            BYTE* pBuffer);
+  // perform a synchronous read. will be buffered
+  // if not aligned.
+  HRESULT SyncRead(
+    LONGLONG llPos,
+    LONG lLength,
+    BYTE* pBuffer);
 
-    // return length
-    HRESULT Length(LONGLONG *pllTotal, LONGLONG* pllAvailable);
+  // return length
+  HRESULT Length(LONGLONG *pllTotal, LONGLONG* pllAvailable);
 
-    // all Reader positions, read lengths and memory locations must
-    // be aligned to this.
-    HRESULT Alignment(LONG* pl);
+  // all Reader positions, read lengths and memory locations must
+  // be aligned to this.
+  HRESULT Alignment(LONG* pl);
 
-    HRESULT BeginFlush();
-    HRESULT EndFlush();
+  HRESULT BeginFlush();
+  HRESULT EndFlush();
 
-    LONG Alignment()
-    {
-        return m_pStream->Alignment();
-    };
+  LONG Alignment()
+  {
+    return m_pStream->Alignment();
+  };
 
-    BOOL IsAligned(LONG l) {
+  BOOL IsAligned(LONG l) {
     if ((l & (Alignment() -1)) == 0) {
-        return TRUE;
+      return TRUE;
     } else {
-        return FALSE;
+      return FALSE;
     }
-    };
+  };
 
-    BOOL IsAligned(LONGLONG ll) {
-        return IsAligned( (LONG) (ll & 0xffffffff));
-    };
+  BOOL IsAligned(LONGLONG ll) {
+    return IsAligned( (LONG) (ll & 0xffffffff));
+  };
 
-    //  Accessor
-    HANDLE StopEvent() const { return m_evDone; }
+  //  Accessor
+  HANDLE StopEvent() const { return m_evDone; }
 };
 
 #endif // __ASYNCIO_H__

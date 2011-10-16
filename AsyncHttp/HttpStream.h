@@ -21,57 +21,57 @@ using namespace std;
 class CHttpStream : public CAsyncStream
 {
 public:
-	CHttpStream() : 
+  CHttpStream() : 
       m_pEventSink(NULL)
-	{
-	}
+      {
+      }
 
-	~CHttpStream();
+      ~CHttpStream();
 
-	HRESULT Initialize(LPCTSTR lpszFileName, string& filetype);
-    HRESULT add_to_downloadqueue(LONGLONG startpos);
-    void WaitForSize(LONGLONG start, LONGLONG end);
+      HRESULT Initialize(LPCTSTR lpszFileName, string& filetype);
+      HRESULT add_to_downloadqueue(LONGLONG startpos);
+      void WaitForSize(LONGLONG start, LONGLONG end);
 
-    HRESULT SetEventSink(IMediaEventSink *pSink)
-    {
-      m_pEventSink = pSink; // Do not add ref;
-      return S_OK;
-    }
+      HRESULT SetEventSink(IMediaEventSink *pSink)
+      {
+        m_pEventSink = pSink; // Do not add ref;
+        return S_OK;
+      }
 
-	// Implementation of CAsyncStream methods
-    HRESULT StartRead(
-		PBYTE pbBuffer,
-		DWORD dwBytesToRead,
-		BOOL bAlign,
-		LPOVERLAPPED pOverlapped,
-		LPBOOL pbPending,
-		LPDWORD pdwBytesRead
-		);
+      // Implementation of CAsyncStream methods
+      HRESULT StartRead(
+        PBYTE pbBuffer,
+        DWORD dwBytesToRead,
+        BOOL bAlign,
+        LPOVERLAPPED pOverlapped,
+        LPBOOL pbPending,
+        LPDWORD pdwBytesRead
+        );
 
-	HRESULT EndRead(
+      HRESULT EndRead(
         LPOVERLAPPED pOverlapped, 
         LPDWORD pdwBytesRead
         );
 
-	HRESULT Cancel();
+      HRESULT Cancel();
 
-    HRESULT Length(LONGLONG *pTotal, LONGLONG *pAvailable);
-    HRESULT Length(LONGLONG *pTotal, LONGLONG *pAvailable, BOOL realvalue);
-	DWORD Alignment() { return 1; }
+      HRESULT Length(LONGLONG *pTotal, LONGLONG *pAvailable);
+      HRESULT Length(LONGLONG *pTotal, LONGLONG *pAvailable, BOOL realvalue);
+      DWORD Alignment() { return 1; }
 
-	void Lock();
-	void Unlock();
+      void Lock();
+      void Unlock();
 
-    void OnEndOfStream();
-	void OnError(DWORD dwErr); 
+      void OnEndOfStream();
+      void OnError(DWORD dwErr); 
 
-	HRESULT Downloader_Start(TCHAR* szUrl, LONGLONG startpoint);
-	HRESULT ServerHTTPPreCheck(const char* url, string& filetype);
-	HRESULT ServerRTMPPreCheck(char* url, string& filetype);
+      HRESULT Downloader_Start(TCHAR* szUrl, LONGLONG startpoint);
+      HRESULT ServerHTTPPreCheck(const char* url, string& filetype);
+      HRESULT ServerRTMPPreCheck(char* url, string& filetype);
 
 private:
-	TCHAR       *m_FileName;
-    IMediaEventSink *m_pEventSink;
+  TCHAR       *m_FileName;
+  IMediaEventSink *m_pEventSink;
 };
 
 
