@@ -104,12 +104,14 @@ BOOL israngeavail(LONGLONG start, LONGLONG length)
 
 void israngeavail_nextstart(LONGLONG start, LONGLONG end, LONGLONG* newstartpos) 
 {
+  // we start with 0 so decrement end
+  end--;
   int chunkstart = getchunkpos(start);
-  int chunkend = getchunkpos(end-1);
+  int chunkend = getchunkpos(end);
   *newstartpos = -1;
 
   if (chunkend > (int)CHUNK_V.size()) {
-    Log("israngeavail_nextstart: !!! chunkend is bigger than CHUNK Vector chunkend: %d Vector: %d", chunkend, CHUNK_V.size());
+    Log("israngeavail_nextstart: !!! chunkend is bigger than CHUNK Vectorsize chunkend: %d Vector: %d", chunkend, CHUNK_V.size());
     return;
   }
   for (int i = chunkstart; i <= chunkend; i++) {
@@ -163,10 +165,9 @@ HRESULT SetNewFileSize(LONGLONG dsize)
 HRESULT CreateTempFile(LONGLONG dsize)
 {
   TCHAR *szTempPath = NULL;
-  DWORD cch = 0;
+  DWORD cch = GetTempPath(0, NULL);
 
   // Query for the size of the temp path.
-  cch = GetTempPath(0, NULL);
   if (cch == 0)
   {
     return HRESULT_FROM_WIN32(GetLastError());
@@ -187,14 +188,6 @@ HRESULT CreateTempFile(LONGLONG dsize)
     return HRESULT_FROM_WIN32(GetLastError());
   }
 
-  // Get the temp file name.
-  UINT uval = GetTempFileName(szTempPath, TEXT("DisasterHTTPFilter"), 0, m_szTempFile);
-  delete [] szTempPath;
-  if (uval == 0)
-  {
-    return HRESULT_FROM_WIN32(GetLastError());
-  }
-
   if (m_hFileWrite != INVALID_HANDLE_VALUE) {
     CloseHandle(m_hFileWrite);
     m_hFileWrite = INVALID_HANDLE_VALUE;
@@ -206,21 +199,43 @@ HRESULT CreateTempFile(LONGLONG dsize)
   }
 
   // Delete old temp file to store the data.
-  if (m_szTempFile[0] != TEXT('0'))
-  {
+  if (m_szTempFile[0] != TEXT('0')) {
     DeleteFile(m_szTempFile);
   }
 
-  // Create the temp file and open the handle for writing. 
-  m_hFileWrite = CreateFile(
-    m_szTempFile,
-    GENERIC_WRITE,
-    FILE_SHARE_READ,
-    NULL,
-    CREATE_ALWAYS,
-    0,
-    NULL
-    );
+  // as our files can be really big and windows doesn't clean tmp automatically we do that
+  // if there is a 2nd running instance this isn't a problem as windows blocks
+  // our delete request
+  for (int i = 0; i < 100; i++) {
+    int length = _snprintf(NULL, 0, "%s\\Disaster123HTTPFilter_%d.file", szTempPath, i);
+    TCHAR *tmpname = new TCHAR[length+1];
+    _snprintf(tmpname, length, "%s\\Disaster123HTTPFilte_%d.file", szTempPath, i);
+    DeleteFile(tmpname);
+    SAFE_DELETE_ARRAY(tmpname);
+  }
+
+  for (int i = 0; i < 100; i++) {
+    _snprintf(m_szTempFile, sizeof(m_szTempFile), "%s\\Disaster123HTTPFilter_%d.file", szTempPath, i);
+
+    // Create the temp file and open the handle for writing. 
+    m_hFileWrite = CreateFile(
+      m_szTempFile,
+      GENERIC_WRITE,
+      FILE_SHARE_READ,
+      NULL,
+      CREATE_ALWAYS,
+      0,
+      NULL
+      );
+
+    if (m_hFileWrite != INVALID_HANDLE_VALUE) {
+      break;
+    }
+  }
+
+  // Get the temp file name.
+  SAFE_DELETE_ARRAY(szTempPath);
+
   if (m_hFileWrite == INVALID_HANDLE_VALUE) 
   {
     Log("CreateTempFile: Could not create temp file %s", m_szTempFile);
@@ -248,6 +263,8 @@ HRESULT CreateTempFile(LONGLONG dsize)
 
     return HRESULT_FROM_WIN32(GetLastError());
   }
+
+  Log("CreateTempFile: %s created", m_szTempFile);
 
   return SetNewFileSize(dsize);
 }
@@ -433,7 +450,7 @@ UINT CALLBACK DownloaderThread(void* param)
         if (is_rtmp) {
           bytesrec = rtmp_recv_wait_all(&rtmp, buffer, sizeof(buffer));
         } else {
-          // MSG_WAITALL is broken / not available on Win XP to we've to use our own function
+          // MSG_WAITALL is broken / not available on Win XP so we've to use our own function
           bytesrec = recv_wait_all(Socket, buffer, sizeof(buffer), ssupp_waitall);
         }
         recv_calls++;
