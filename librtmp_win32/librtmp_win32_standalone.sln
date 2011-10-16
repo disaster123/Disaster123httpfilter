@@ -1,0 +1,28 @@
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual Studio 2008
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "librtmp", "librtmp_win32\librtmp_win32.vcproj", "{23EDFAE9-EE2E-408B-AEBE-9BB58E5D43FE}"
+	ProjectSection(ProjectDependencies) = postProject
+		{9707DC37-B76A-4B1A-AAFA-078474A0293D} = {9707DC37-B76A-4B1A-AAFA-078474A0293D}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "polarssl", "polarssl-0.13.1\visualc\polarssl.vcproj", "{9707DC37-B76A-4B1A-AAFA-078474A0293D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{23EDFAE9-EE2E-408B-AEBE-9BB58E5D43FE}.Debug|Win32.ActiveCfg = Debug|Win32
+		{23EDFAE9-EE2E-408B-AEBE-9BB58E5D43FE}.Debug|Win32.Build.0 = Debug|Win32
+		{23EDFAE9-EE2E-408B-AEBE-9BB58E5D43FE}.Release|Win32.ActiveCfg = Release|Win32
+		{23EDFAE9-EE2E-408B-AEBE-9BB58E5D43FE}.Release|Win32.Build.0 = Release|Win32
+		{9707DC37-B76A-4B1A-AAFA-078474A0293D}.Debug|Win32.ActiveCfg = Debug|Win32
+		{9707DC37-B76A-4B1A-AAFA-078474A0293D}.Debug|Win32.Build.0 = Debug|Win32
+		{9707DC37-B76A-4B1A-AAFA-078474A0293D}.Release|Win32.ActiveCfg = Release|Win32
+		{9707DC37-B76A-4B1A-AAFA-078474A0293D}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

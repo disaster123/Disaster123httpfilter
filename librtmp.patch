@@ -1,0 +1,74 @@
+Index: librtmp/log.c
+===================================================================
+--- librtmp/log.c	(revision 195)
++++ librtmp/log.c	(working copy)
+@@ -49,6 +49,15 @@
+ {
+ 	char str[MAX_PRINT_LEN]="";
+ 
++#ifdef _DEBUG
++    if (!fmsg) {
++      fmsg = fopen("C:\\Temp\\RTMP.log", "w");
++      RTMP_debuglevel = RTMP_LOGDEBUG2;
++    }
++#else
++    return;
++#endif	
++	
+ 	vsnprintf(str, MAX_PRINT_LEN-1, format, vl);
+ 
+ 	/* Filter out 'no-name' */
+Index: librtmp/rtmp.c
+===================================================================
+--- librtmp/rtmp.c	(revision 195)
++++ librtmp/rtmp.c	(working copy)
+@@ -1247,11 +1247,6 @@
+   return bHasMediaPacket;
+ }
+ 
+-#ifdef _DEBUG
+-extern FILE *netstackdump;
+-extern FILE *netstackdump_read;
+-#endif
+-
+ static int
+ ReadN(RTMP *r, char *buffer, int n)
+ {
+@@ -1319,9 +1314,6 @@
+ 	    SendBytesReceived(r);
+ 	}
+       /*RTMP_Log(RTMP_LOGDEBUG, "%s: %d bytes\n", __FUNCTION__, nBytes); */
+-#ifdef _DEBUG
+-      fwrite(ptr, 1, nBytes, netstackdump_read);
+-#endif
+ 
+       if (nBytes == 0)
+ 	{
+@@ -2634,6 +2634,16 @@
+       /* Show metadata */
+       RTMP_Log(RTMP_LOGINFO, "Metadata:");
+       DumpMetaData(&obj);
++
++      // added by disaster123 to always store the metadata
++      if ((r->m_read.nMetaHeaderSize != len) || (memcmp(r->m_read.metaHeader, body, r->m_read.nMetaHeaderSize) != 0)) {
++        if (r->m_read.metaHeader) 
++          free(r->m_read.metaHeader);
++        r->m_read.metaHeader = (char *) malloc(len);
++        memcpy(r->m_read.metaHeader, body, len);
++        r->m_read.nMetaHeaderSize = len;
++      }
++
+       if (RTMP_FindFirstMatchingProperty(&obj, &av_duration, &prop))
+ 	{
+ 	  r->m_fDuration = prop.p_vu.p_number;
+@@ -3536,10 +3528,6 @@
+ {
+   int rc;
+ 
+-#ifdef _DEBUG
+-  fwrite(buf, 1, len, netstackdump);
+-#endif
+-
+ #if defined(CRYPTO) && !defined(NO_SSL)
+   if (sb->sb_ssl)
+     {
