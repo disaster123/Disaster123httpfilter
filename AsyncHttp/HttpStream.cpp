@@ -57,16 +57,17 @@ static CCritSec g_CritSec;
 std::queue<std::string> m_DownloaderQueue;
 RTMP          rtmp = { 0 };
 string        rtmp_onlinevideos_params = "";
-TCHAR		  m_szTempFile[MAX_PATH]; // Name of the temp file
+TCHAR		      m_szTempFile[MAX_PATH]; // Name of the temp file
 BOOL          m_DownloaderShouldRun = FALSE;
 HANDLE        m_hDownloader = NULL;
-HANDLE		  m_hFileWrite = INVALID_HANDLE_VALUE;   // File handle for writing to the temp file.
-HANDLE		  m_hFileRead = INVALID_HANDLE_VALUE;    // File handle for reading from the temp file.
-LONGLONG	  m_llDownloadLength = -1;
-LONGLONG	  m_llDownloadStart  = -1;
-LONGLONG	  m_llDownloadPos  = -1;
-LONGLONG	  m_llDownloadedBytes  = -1;
-LONGLONG      m_llBytesRequested;     // Size of most recent read request.
+HANDLE		    m_hFileWrite = INVALID_HANDLE_VALUE;   // File handle for writing to the temp file.
+HANDLE		    m_hFileRead = INVALID_HANDLE_VALUE;    // File handle for reading from the temp file.
+LONGLONG	    m_llDownloadLength = -1;
+LONGLONG	    m_llDownloadStart  = -1;
+LONGLONG	    m_llDownloadPos  = -1;
+LONGLONG	    m_llDownloadedBytes  = -1;
+LONGLONG      m_llBytesRequested;
+LONGLONG      m_llLastReadPos = -1;
 BOOL          m_llSeekPos;
 float         m_lldownspeed;
 vector<BOOL>  CHUNK_V; // this is the HAVING CHUNK Vector :-)
@@ -911,7 +912,7 @@ HRESULT CHttpStream::ServerHTTPPreCheck(const char* url, string& filetype)
   SAFE_DELETE_ARRAY(szPath);
 
   m_llDownloadLength = dsize;
-  Log("\n\nServerHTTPPreCheck: SERVER OK => SUPPORTED!\n");
+  Log("ServerHTTPPreCheck: SERVER OK => SUPPORTED!");
 
   runtime = GetSystemTimeInMS()-runtime;
   if (runtime > 2500) {
@@ -927,22 +928,16 @@ HRESULT CHttpStream::ServerHTTPPreCheck(const char* url, string& filetype)
 
   // Request the start and END
   runtime = GetSystemTimeInMS();
-#ifdef _DEBUG
   Log("ServerHTTPPreCheck: added queue download 0");
-#endif
   add_to_downloadqueue( 0 );
   WaitForSize(0, min( (256*1024), dsize) );
-#ifdef _DEBUG
   Log("ServerHTTPPreCheck: wait for size: %I64d - DONE", min( (256*1024), dsize) );
-#endif
   if (m_llSeekPos) {
     add_to_downloadqueue( max(0, dsize-(256*1024) ) );
     WaitForSize( max(0, dsize-(256*1024) ) , dsize);
-#ifdef _DEBUG
     Log("ServerHTTPPreCheck: wait for size: %I64d - DONE", max(0, dsize-(256*1024) ) );
-#endif
   }
-  Log("\n\nServerHTTPPreCheck: PREBUFFER of file done\n");
+  Log("ServerHTTPPreCheck: PREBUFFER of file done");
 
   runtime = GetSystemTimeInMS()-runtime;
   // 512kb download
@@ -968,6 +963,7 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName, string& filetype)
   m_llDownloadPos  = -1;
   m_llDownloadedBytes  = 0;
   m_llBytesRequested = 0;
+  m_llLastReadPos = -1;
   m_llSeekPos = TRUE;
   m_lldownspeed = 0.05F;
   CHUNK_V.clear();
@@ -1154,7 +1150,7 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
   Log("CHttpStream::StartRead: read from %I64d (%.4Lf MB) to %I64d (%.4Lf MB)", pos.QuadPart, ((float)pos.QuadPart/1024/1024), llReadEnd, ((float)llReadEnd/1024/1024) );
 #endif
 
-  if ((m_llDownloadLength > 0) && (pos.QuadPart > m_llDownloadLength || llReadEnd > m_llDownloadLength)) {
+  if (m_llDownloadLength > 0 && llReadEnd > m_llDownloadLength) {
     Log("CHttpStream::StartRead: THIS SHOULD NEVER HAPPEN! requested start or endpos out of max. range - return end of file");
     m_datalock.Unlock();
     return HRESULT_FROM_WIN32(38);
@@ -1168,7 +1164,7 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
     Log("CHttpStream::StartRead: Request out of range - downstart: %I64d (%.4Lf MB) downpos: %I64d (%.4Lf MB)", m_llDownloadStart, ((float)m_llDownloadStart/1024/1024), m_llDownloadPos, ((float)m_llDownloadPos/1024/1024) );
 #endif
     // check if we can reach the barrier at all
-    if ((pos.QuadPart >= m_llDownloadStart) && (llReadEnd > m_llDownloadPos))
+    if (pos.QuadPart >= m_llDownloadStart && llReadEnd > m_llDownloadPos)
     {
       // check if we'll reach the pos. within X sec.
       int reachin = 5;
@@ -1180,7 +1176,8 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
         }
       }
       else
-      { // out of range BUT will reach Limit in X sek.
+      {
+        // out of range BUT will reach Limit in X sek.
         m_datalock.Unlock();
       }
     } else {
@@ -1218,8 +1215,7 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
     }
   }
   // Lock the datalock
-  // this prevents the downloadthread from starting a new donwloadpos,
-  // closing, reopening the file handle while we want to read, ...
+  // this prevents the downloadthread from starting a new downloadpos
 #ifdef MANLOCK_DEBUG
   Log("CHttpStream::StartRead: m_datalock.Lock()");
 #endif
@@ -1228,6 +1224,7 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
   //Log("CHttpStream::StartRead: Read from Temp File BytesToRead: %u Startpos: %I64d", dwBytesToRead, pos.QuadPart);
   // Read the data from the temp file. (Async I/O request.)
   // Log("CHttpStream::StartRead: Read from Temp File %u %I64d", dwBytesToRead, pos.QuadPart);
+  m_llLastReadPos = pos.QuadPart;
   bResult = ReadFile(
     m_hFileRead, 
     pbBuffer, 
@@ -1235,7 +1232,7 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
     pdwBytesRead,
     pOverlapped
     );
-  //Log("CHttpStream::StartRead: Read from Temp File");
+  //Log("CHttpStream::StartRead: Read from Temp File done");
 
   m_datalock.Unlock();
 #ifdef MANLOCK_DEBUG
