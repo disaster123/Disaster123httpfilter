@@ -1151,7 +1151,7 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
 #endif
 
   if (m_llDownloadLength > 0 && llReadEnd > m_llDownloadLength) {
-    Log("CHttpStream::StartRead: THIS SHOULD NEVER HAPPEN! requested start or endpos out of max. range - return end of file");
+    Log("CHttpStream::StartRead: THIS SHOULD NEVER HAPPEN! requested start or endpos out of max. range - return end of file. Downloadlength: %I64d Try to read up to pos: %I64d", m_llDownloadLength, llReadEnd);
     m_datalock.Unlock();
     return HRESULT_FROM_WIN32(38);
   }
