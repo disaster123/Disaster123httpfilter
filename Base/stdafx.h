@@ -21,6 +21,14 @@
 // #define CHUNK_SIZE 65536
 #define CHUNK_SIZE 32768
 
+// 500MB
+#define BIGFILE 524288000
+// 100MB
+#define LOWDISKSPACE 104857600
+//#define LOWDISKSPACE 71887224832
+// 10MB
+#define SKIP_BEGINNING 10485760
+
 #define SAFE_DELETE(p)       { if(p) { delete (p);     (p)=NULL; } }
 #define SAFE_DELETE_ARRAY(p) { if(p) { delete[] (p);   (p)=NULL; } }
 #define SAFE_RELEASE(p)      { if(p) { (p)->Release(); (p)=NULL; } }

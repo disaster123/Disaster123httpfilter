@@ -277,7 +277,7 @@ static char* buildrequeststring(char* szHost, int szPort, char* szPath, LONGLONG
   // this is bad! as we need another allocation at the bottom but how to determine the size?
   char request[2048];
 
-  //int len = _snprintf(NULL, 999999, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%I64d-\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos);
+  //int len = _snprintf(NULL, 999999, "GET /%s HTTP/1.1\r\nHost: %s:%d\r\nRange: Bytes=%I64d-\r\nConnection: close\r\n\r\n", szPath, szHost, szPort, startpos-1);
   //request = (char*) malloc (sizeof(char) * (len + 1));
 
   if (m_llSeekPos) {

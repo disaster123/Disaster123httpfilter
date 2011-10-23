@@ -209,17 +209,17 @@ public:
 
       STDMETHODIMP QueryProgress(LONGLONG* pllTotal, LONGLONG* pllCurrent)
       {
-        LONGLONG llLength = 0, llAvailable = 0;
-        *pllTotal = llLength;
+        LONGLONG llBytesToRead = 0, llAvailable = 0;
+        *pllTotal = llBytesToRead;
         *pllCurrent = llAvailable;
 
         if (!m_pFileName) {
           return S_OK;
         }
 
-        HRESULT hr = m_HttpStream.Length(&llLength, &llAvailable, TRUE);
+        HRESULT hr = m_HttpStream.Length(&llBytesToRead, &llAvailable, TRUE);
         if (SUCCEEDED(hr)) {
-          *pllTotal = llLength;
+          *pllTotal = llBytesToRead;
           *pllCurrent = llAvailable;
           hr = S_OK;
         }

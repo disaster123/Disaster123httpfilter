@@ -275,12 +275,12 @@ HRESULT
       HRESULT hr = pRequest->GetHResult();
       if(hr == S_FALSE)
       {
-        LONGLONG llLength = 0, llAvailable = 0;
+        LONGLONG llBytesToRead = 0, llAvailable = 0;
 
-        hr = m_pStream->Length(&llLength, &llAvailable);
+        hr = m_pStream->Length(&llBytesToRead, &llAvailable);
 
         if (SUCCEEDED(hr) &&
-          (pRequest->GetActualLength() + pRequest->GetStart() == llLength))
+          (pRequest->GetActualLength() + pRequest->GetStart() == llBytesToRead))
         {
           // this means the actual length was less than
           // requested - may be ok if he aligned the end of file

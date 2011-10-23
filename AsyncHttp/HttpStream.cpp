@@ -66,7 +66,7 @@ LONGLONG	    m_llDownloadLength = -1;
 LONGLONG	    m_llDownloadStart  = -1;
 LONGLONG	    m_llDownloadPos  = -1;
 LONGLONG	    m_llDownloadedBytes  = -1;
-LONGLONG      m_llBytesRequested;
+LONGLONG      m_llLastNotAvailPosRequested;
 LONGLONG      m_llLastReadPos = -1;
 BOOL          m_llSeekPos;
 float         m_lldownspeed;
@@ -99,7 +99,8 @@ BOOL israngeavail(LONGLONG start, LONGLONG length)
     }
   }
   // just for logging as i is incremented one more time
-  //Log("israngeavail: start: %I64d (chunk: %d) end: %I64d (chunk: %d) chunkpos %d IS AVAIL", start, chunkstart, start+length, chunkend, --i);
+  //i--;
+  //Log("israngeavail: start: %I64d (chunk: %d) end: %I64d (chunk: %d) chunkpos %d IS AVAIL", start, chunkstart, start+length, chunkend, i);
   return TRUE;
 }
 
@@ -211,7 +212,9 @@ HRESULT CreateTempFile(LONGLONG dsize)
     int length = _snprintf(NULL, 0, "%s\\Disaster123HTTPFilter_%d.file", szTempPath, i);
     TCHAR *tmpname = new TCHAR[length+1];
     _snprintf(tmpname, length, "%s\\Disaster123HTTPFilte_%d.file", szTempPath, i);
-    DeleteFile(tmpname);
+    if (DeleteFile(tmpname)) {
+      Log("CreateTempFile: Deleted old file: %s", tmpname);
+    }
     SAFE_DELETE_ARRAY(tmpname);
   }
 
@@ -305,7 +308,7 @@ DWORD DownloaderThread_WriteData(LONGLONG startpos, char *buffer, int buffersize
     DWORD err = GetLastError();
     return err;
   }
-  // do this BEFORE m_llDownloadPos - as we always set the starting point
+  // do this BEFORE adding to m_llDownloadPos - as we always set the starting point
   CHUNK_V[getchunkpos(m_llDownloadPos)] = TRUE;
   m_llDownloadPos += cbWritten;
   m_llDownloadedBytes += cbWritten;
@@ -314,12 +317,50 @@ DWORD DownloaderThread_WriteData(LONGLONG startpos, char *buffer, int buffersize
   return 0;
 }
 
+DWORD DownloaderThread_FreeSpace()
+{
+#ifndef AUTOLOCK_DEBUG
+  CAutoLock lock(&m_datalock);
+#endif
+#ifdef AUTOLOCK_DEBUG
+  CAutoLockDebug lock(&m_datalock, __LINE__, __FILE__,__FUNCTION__);
+#endif
+  int chunkend = getchunkpos(m_llLastReadPos)-1;
+  int chunkstart = getchunkpos(SKIP_BEGINNING)+1;
+
+  if (chunkend < 1 || chunkend < chunkstart) {
+   Log("DownloaderThread_FreeSpace: no space to free!");
+   return 0;
+  }
+
+  DWORD lpBytesReturned = 0;
+  FILE_ZERO_DATA_INFORMATION fzdi;
+  fzdi.FileOffset.QuadPart = chunkstart * CHUNK_SIZE;
+  fzdi.BeyondFinalZero.QuadPart = chunkend * CHUNK_SIZE - chunkstart * CHUNK_SIZE; // allign to chunk
+
+  if (!DeviceIoControl(m_hFileWrite, FSCTL_SET_ZERO_DATA, &fzdi,
+                 sizeof(fzdi), NULL, 0, &lpBytesReturned, NULL)  ) {
+    Log("DownloaderThread_FreeSpace: Couldn't free space!");
+  }
+
+  unsigned int freed = 0;
+  for (int i = chunkstart; i <= chunkend; i++) {
+    if (CHUNK_V[i]) {
+      freed++;
+      CHUNK_V[i] = FALSE;
+    }
+  }
+  Log("DownloaderThread_FreeSpace: Freed %I64d bytes", (LONGLONG)freed*CHUNK_SIZE);
+
+  return 1;
+}
+
 void DownloaderThread_initvars(LONGLONG startpos) {
   m_llDownloadStart = startpos;
   m_llDownloadPos = startpos;
   // this shouldn't be resetted while restart download
   // m_llDownloadedBytes = 0;
-  m_llBytesRequested = 0;
+  m_llLastNotAvailPosRequested = 0;
 }
 
 UINT CALLBACK DownloaderThread(void* param)
@@ -502,7 +543,7 @@ UINT CALLBACK DownloaderThread(void* param)
               m_lldownspeed = (float)Round(((float)bytesdiff/1024/1024)/timediff, 4);
             }
 
-            Log("DownloaderThread: Downloaded (found new queue request): %.2LfMB time: %.2Lf Speed: %.4Lf MB/s Recv: %I64d Last requested: %I64d", ((float)bytesrec_sum/1024/1024), timediff, m_lldownspeed, recv_calls, m_llBytesRequested);
+            Log("DownloaderThread: Downloaded (found new queue request): %.2LfMB time: %.2Lf Speed: %.4Lf MB/s Recv: %I64d Last requested: %I64d", ((float)bytesrec_sum/1024/1024), timediff, m_lldownspeed, recv_calls, m_llLastNotAvailPosRequested);
             break;
           }
 
@@ -514,7 +555,19 @@ UINT CALLBACK DownloaderThread(void* param)
             LONGLONG bytesdiff = bytesrec_sum-bytesrec_sum_old;
             float timediff = ((float)(time_end-time_start))/1000;
             m_lldownspeed = (float)Round(((float)bytesdiff/1024/1024)/timediff, 4);
-            Log("DownloaderThread: Downloaded %.2LfMB Pos: %.4LfMB time: %.2Lf Speed: %.4Lf MB/s Recv: %I64d Last requested: %I64d", ((float)bytesrec_sum/1024/1024), ((float)m_llDownloadPos/1024/1024), timediff, m_lldownspeed, recv_calls, m_llBytesRequested);
+
+            // let's also check free disk space
+            ULARGE_INTEGER lpFreeBytesAvailable;
+            // FIX ME! We need to use m_szFilename but extract the path from ist to check
+            GetDiskFreeSpaceEx("C:", &lpFreeBytesAvailable, NULL, NULL);
+//            Log("(%I64d > %d && %I64d > %I64d && %I64d < %I64d)",
+//               m_llDownloadLength, BIGFILE, m_llDownloadedBytes, LOWDISKSPACE, lpFreeBytesAvailable.QuadPart, LOWDISKSPACE);
+            if (m_llDownloadLength > BIGFILE && m_llDownloadedBytes > LOWDISKSPACE && lpFreeBytesAvailable.QuadPart < LOWDISKSPACE) {
+              // try to free space
+              DownloaderThread_FreeSpace();
+            }
+
+            Log("DownloaderThread: Downloaded %.2LfMB Pos: %.4LfMB time: %.2Lf Speed: %.4Lf MB/s Recv: %I64d Last requested: %I64d freediskspace: %I64dMB", ((float)bytesrec_sum/1024/1024), ((float)m_llDownloadPos/1024/1024), timediff, m_lldownspeed, recv_calls, m_llLastNotAvailPosRequested, (lpFreeBytesAvailable.QuadPart/1024/1024));
             time_start = GetSystemTimeInMS();
             bytesrec_sum_old = bytesrec_sum;
           }
@@ -962,7 +1015,7 @@ HRESULT CHttpStream::Initialize(LPCTSTR lpszFileName, string& filetype)
   m_llDownloadStart  = -1;
   m_llDownloadPos  = -1;
   m_llDownloadedBytes  = 0;
-  m_llBytesRequested = 0;
+  m_llLastNotAvailPosRequested = 0;
   m_llLastReadPos = -1;
   m_llSeekPos = TRUE;
   m_lldownspeed = 0.05F;
@@ -1143,32 +1196,32 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
   pos.LowPart = pOverlapped->Offset;
   pos.HighPart = pOverlapped->OffsetHigh;
 
-  LONGLONG llLength = dwBytesToRead;
-  LONGLONG llReadEnd = pos.QuadPart + llLength;
+  LONGLONG llBytesToRead = dwBytesToRead;
+  LONGLONG llReadUpToPos = pos.QuadPart + llBytesToRead;
 
 #ifdef _DEBUG
-  Log("CHttpStream::StartRead: read from %I64d (%.4Lf MB) to %I64d (%.4Lf MB)", pos.QuadPart, ((float)pos.QuadPart/1024/1024), llReadEnd, ((float)llReadEnd/1024/1024) );
+  Log("CHttpStream::StartRead: read from %I64d (%.4Lf MB) to %I64d (%.4Lf MB)", pos.QuadPart, ((float)pos.QuadPart/1024/1024), llReadUpToPos, ((float)llReadUpToPos/1024/1024) );
 #endif
 
-  if (m_llDownloadLength > 0 && llReadEnd > m_llDownloadLength) {
-    Log("CHttpStream::StartRead: THIS SHOULD NEVER HAPPEN! requested start or endpos out of max. range - return end of file. Downloadlength: %I64d Try to read up to pos: %I64d", m_llDownloadLength, llReadEnd);
+  if (m_llDownloadLength > 0 && llReadUpToPos > m_llDownloadLength) {
+    Log("CHttpStream::StartRead: THIS SHOULD NEVER HAPPEN! requested start or endpos out of max. range - return end of file. Downloadlength: %I64d Try to read up to pos: %I64d", m_llDownloadLength, llReadUpToPos);
     m_datalock.Unlock();
     return HRESULT_FROM_WIN32(38);
   }
 
   // is the requested range available?
-  if (!israngeavail(pos.QuadPart,llLength))
+  if (!israngeavail(pos.QuadPart,llBytesToRead))
   {
     // request is out of range let's check if we can reach it
 #ifdef _DEBUG
     Log("CHttpStream::StartRead: Request out of range - downstart: %I64d (%.4Lf MB) downpos: %I64d (%.4Lf MB)", m_llDownloadStart, ((float)m_llDownloadStart/1024/1024), m_llDownloadPos, ((float)m_llDownloadPos/1024/1024) );
 #endif
     // check if we can reach the barrier at all
-    if (pos.QuadPart >= m_llDownloadStart && llReadEnd > m_llDownloadPos)
+    if (pos.QuadPart >= m_llDownloadStart && llReadUpToPos > m_llDownloadPos)
     {
       // check if we'll reach the pos. within X sec.
       int reachin = 5;
-      if ( llReadEnd > (m_llDownloadPos+(m_lldownspeed*1024*1024*reachin)) ) {
+      if ( llReadUpToPos > (m_llDownloadPos+(m_lldownspeed*1024*1024*reachin)) ) {
         Log("CHttpStream::StartRead: will not reach pos. within %d seconds - speed: %.4Lf MB/s ", reachin, m_lldownspeed);
         m_datalock.Unlock();
         if (m_llSeekPos) {
@@ -1203,10 +1256,10 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
       m_pEventSink->Notify(EC_BUFFERING_DATA, TRUE, 0);
     }
 
-    // Log("CHttpStream::StartRead: wait for start: %I64d end: %I64d", pos.QuadPart, llReadEnd);
-    m_llBytesRequested = llReadEnd;
-    WaitForSize(pos.QuadPart, llReadEnd);
-    m_llBytesRequested = 0;
+    // Log("CHttpStream::StartRead: wait for start: %I64d end: %I64d", pos.QuadPart, llReadUpToPos);
+    m_llLastNotAvailPosRequested = llReadUpToPos;
+    WaitForSize(pos.QuadPart, llReadUpToPos);
+    m_llLastNotAvailPosRequested = 0;
     // Log("CHttpStream::StartRead: wait for start: DONE");
 
     if (m_pEventSink)
@@ -1359,11 +1412,11 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable, BOOL realval
       m_pEventSink->Notify(EC_BUFFERING_DATA, TRUE, 0);
     }
 
-    m_llBytesRequested = 5+m_llDownloadStart; // at least 5 bytes
+    m_llLastNotAvailPosRequested = 5+m_llDownloadStart; // at least 5 bytes
     m_datalock.Unlock();
-    WaitForSize(m_llDownloadStart, m_llBytesRequested);
+    WaitForSize(m_llDownloadStart, m_llLastNotAvailPosRequested);
     m_datalock.Lock();
-    m_llBytesRequested = 0;
+    m_llLastNotAvailPosRequested = 0;
 
     if (m_pEventSink)
     {
