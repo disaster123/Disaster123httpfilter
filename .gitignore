@@ -1,3 +1,28 @@
-*.sdf
-*.user
-*.suo
+
+# /
+/*.ncb
+/*.suo
+/*.user
+/Debug
+/Release
+/*.sdf
+/*.opensdf
+/ipch
+
+# /librtmp_win32/
+/librtmp_win32/*.ncb
+/librtmp_win32/*.suo
+/librtmp_win32/Debug
+/librtmp_win32/Release
+/librtmp_win32/librtmp_win32.ncb
+/librtmp_win32/librtmp_win32.suo
+
+# /librtmp_win32/librtmp_win32/
+/librtmp_win32/librtmp_win32/*.user
+/librtmp_win32/librtmp_win32/Debug
+/librtmp_win32/librtmp_win32/Release
+
+# /librtmp_win32/polarssl-0.13.1/visualc/
+/librtmp_win32/polarssl-0.13.1/visualc/*.user
+/librtmp_win32/polarssl-0.13.1/visualc/polarssl.lib
+/librtmp_win32/polarssl-0.13.1/visualc/temp
