@@ -1203,10 +1203,14 @@ HRESULT CHttpStream::StartRead(PBYTE pbBuffer,DWORD dwBytesToRead,BOOL bAlign,LP
   Log("CHttpStream::StartRead: read from %I64d (%.4Lf MB) to %I64d (%.4Lf MB)", pos.QuadPart, ((float)pos.QuadPart/1024/1024), llReadUpToPos, ((float)llReadUpToPos/1024/1024) );
 #endif
 
-  if (m_llDownloadLength > 0 && llReadUpToPos > m_llDownloadLength) {
+  if (m_llDownloadLength > 0 && pos.QuadPart >= m_llDownloadLength) {
     Log("CHttpStream::StartRead: THIS SHOULD NEVER HAPPEN! requested start or endpos out of max. range - return end of file. Downloadlength: %I64d Try to read up to pos: %I64d", m_llDownloadLength, llReadUpToPos);
     m_datalock.Unlock();
     return HRESULT_FROM_WIN32(38);
+  }
+
+  if (m_llDownloadLength > 0 && llReadUpToPos > m_llDownloadLength) {
+    llReadUpToPos = m_llDownloadLength;
   }
 
   // is the requested range available?
@@ -1435,7 +1439,7 @@ HRESULT CHttpStream::Length(LONGLONG *pTotal, LONGLONG *pAvailable, BOOL realval
   }
 
   m_datalock.Unlock();
-  //Log("Length called: return: total: %I64d avail: %I64d", *pTotal, *pAvailable);
+  // Log("Length called: return: total: %I64d avail: %I64d", *pTotal, *pAvailable);
 
   return S_OK;
 }
